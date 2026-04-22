@@ -4,6 +4,11 @@
 
 ---
 
+<img width="821" height="259" alt="Screenshot_1" src="https://github.com/user-attachments/assets/713e5160-bc7f-4715-ac81-d486b036e8be" />
+<img width="855" height="546" alt="Screenshot_2" src="https://github.com/user-attachments/assets/c1ca0722-14c4-40d2-aa7f-86d46dd78768" />
+
+---
+
 ## Стек
 
 - Python 3.12, **aiogram 3**, **SQLite** (`aiosqlite`), SQLAlchemy 2  
