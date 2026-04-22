@@ -9,6 +9,7 @@ from aiogram.filters import BaseFilter, Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from app.config import Settings
 from app.db.models import MessageSource
 from app.i18n import tr
 from app.keyboards.help_menu_kb import kb_start_inline
@@ -44,6 +45,19 @@ def _is_missing_thread_error(exc: BaseException) -> bool:
     return "thread not found" in str(exc).lower()
 
 
+async def _create_forum_topic_open(
+    bot: Bot,
+    settings: Settings,
+    forum_chat_id: int,
+    topic_name: str,
+):
+    """Новая тема с иконкой «открытый тикет» (если задано в настройках)."""
+    kwargs: dict = {"chat_id": forum_chat_id, "name": topic_name[:127]}
+    if settings.topic_icon_emoji_open:
+        kwargs["icon_custom_emoji_id"] = settings.topic_icon_emoji_open
+    return await bot.create_forum_topic(**kwargs)
+
+
 async def _recreate_support_topic(
     bot: Bot,
     session_factory,
@@ -62,7 +76,7 @@ async def _recreate_support_topic(
         uid=uid,
         name=message.from_user.full_name or "",
     )[:127]
-    forum = await bot.create_forum_topic(chat_id=forum_chat_id, name=topic_name)
+    forum = await _create_forum_topic_open(bot, settings, forum_chat_id, topic_name)
     new_tid = forum.message_thread_id
     async with session_factory() as session:
         async with session.begin():
@@ -150,7 +164,7 @@ async def cmd_help(message: Message, session_factory):
 
 
 @router.message(Command("close"), F.chat.type == ChatType.PRIVATE)
-async def cmd_close_private(message: Message, bot: Bot, session_factory):
+async def cmd_close_private(message: Message, bot: Bot, session_factory, settings):
     uid = message.from_user.id
     async with session_factory() as session:
         ticket = await ticket_svc.get_open_ticket(session, uid)
@@ -160,6 +174,7 @@ async def cmd_close_private(message: Message, bot: Bot, session_factory):
     await close_ticket_by_id(
         bot,
         session_factory,
+        settings,
         ticket_id=ticket.id,
         notify_user_text=None,
         notify_thread_text=tr("flow", "notify_thread_user_button"),
@@ -241,9 +256,11 @@ async def process_support_message(
                     uid=uid,
                     name=message.from_user.full_name or "",
                 )
-                forum = await bot.create_forum_topic(
-                    chat_id=forum_chat_id,
-                    name=topic_name[:127],
+                forum = await _create_forum_topic_open(
+                    bot,
+                    settings,
+                    forum_chat_id,
+                    topic_name[:127],
                 )
                 thread_id = forum.message_thread_id
                 ticket = await ticket_svc.create_ticket(

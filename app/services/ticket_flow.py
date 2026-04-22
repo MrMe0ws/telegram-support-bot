@@ -4,6 +4,7 @@ import logging
 
 from aiogram import Bot
 
+from app.config import Settings
 from app.db.models import TicketStatus
 from app.i18n import tr
 from app.services import tickets as ticket_svc
@@ -14,6 +15,7 @@ log = logging.getLogger(__name__)
 async def close_ticket_by_id(
     bot: Bot,
     session_factory,
+    settings: Settings,
     *,
     ticket_id: int,
     notify_user_text: str | None,
@@ -48,6 +50,20 @@ async def close_ticket_by_id(
             )
         except Exception as e:
             log.warning("notify thread on close: %s", e)
+
+    if (
+        forum_chat_id is not None
+        and thread_id is not None
+        and settings.topic_icon_emoji_closed
+    ):
+        try:
+            await bot.edit_forum_topic(
+                chat_id=forum_chat_id,
+                message_thread_id=thread_id,
+                icon_custom_emoji_id=settings.topic_icon_emoji_closed,
+            )
+        except Exception as e:
+            log.warning("edit_forum_topic (иконка закрытого тикета): %s", e)
 
     if forum_chat_id is not None and thread_id is not None:
         try:

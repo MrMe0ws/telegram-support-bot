@@ -46,6 +46,7 @@ async def close_in_topic(
     _, msg = await close_ticket_by_id(
         bot,
         session_factory,
+        settings,
         ticket_id=ticket.id,
         notify_user_text=tr("flow", "notify_user_default"),
         notify_thread_text=tr("flow", "notify_thread_close_command"),

@@ -66,6 +66,8 @@
 | `ADMIN_IDS` | да для админ-функций | Через запятую: Telegram user id админов |
 | `DATABASE_URL` | нет | По умолчанию `sqlite+aiosqlite:////data/support.db` |
 | `TOPIC_NAME_TEMPLATE` | нет | Шаблон имени топика: `{username}`, `{ticket_id}`, `{uid}`, `{name}` |
+| `TOPIC_ICON_EMOJI_OPEN` | нет | ID кастомного emoji для иконки **открытого** тикета (по умолчанию «?»). Пустая строка — без иконки при создании темы |
+| `TOPIC_ICON_EMOJI_CLOSED` | нет | ID кастомного emoji перед закрытием темы (**закрытый** тикет). Пустая строка — только `closeForumTopic` без смены иконки |
 | `BOT_LOCALE` | нет | Подкаталог в `texts/` (по умолчанию `ru`) |
 | `TEXTS_DIR` | нет | Корень каталога `texts` (в образе задано `/app/texts`) |
 
