@@ -1,0 +1,22 @@
+# Ответы на inline-кнопки (callback query)
+
+ticket_not_found: ❓ Тикет не найден
+not_your_ticket: ⚠️ Это не ваш тикет
+
+admin_only: 🔒 Только для администраторов
+no_message: ⚠️ Нет сообщения
+
+wrong_topic: ⚠️ Тикет относится к другой теме
+
+profile_load_failed: "⚠️ Не удалось загрузить профиль: {error}"
+profile_no_username: 👤 username не указан
+profile_name_empty: "—"
+
+# HTML для edit_message в группе (line_user, name — уже экранированы)
+profile_body_html: |
+  <b>👤 Профиль клиента</b>
+  {line_user}
+  Имя: {name}
+
+profile_send_fallback_failed: "⚠️ Не удалось показать профиль: {error}"
+edit_message_failed: ⚠️ Не удалось вернуть панель. Попробуйте снова.

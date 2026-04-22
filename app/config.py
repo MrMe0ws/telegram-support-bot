@@ -1,0 +1,46 @@
+import os
+from dataclasses import dataclass
+
+from app.i18n import tr
+
+
+def _split_ids(raw: str) -> frozenset[int]:
+    out: list[int] = []
+    for part in raw.replace(" ", "").split(","):
+        if not part:
+            continue
+        out.append(int(part))
+    return frozenset(out)
+
+
+@dataclass(frozen=True)
+class Settings:
+    bot_token: str
+    support_group_id: int
+    admin_ids: frozenset[int]
+    database_url: str
+    topic_name_template: str
+
+    @staticmethod
+    def from_env() -> "Settings":
+        token = os.environ.get("BOT_TOKEN", "").strip()
+        if not token:
+            raise RuntimeError(tr("errors", "no_bot_token"))
+
+        gid = int(os.environ["SUPPORT_GROUP_ID"])
+        admins_raw = os.environ.get("ADMIN_IDS", "")
+        db = os.environ.get(
+            "DATABASE_URL",
+            "sqlite+aiosqlite:////data/support.db",
+        )
+        tpl = os.environ.get(
+            "TOPIC_NAME_TEMPLATE",
+            "{username} · #{ticket_id}",
+        )
+        return Settings(
+            bot_token=token,
+            support_group_id=gid,
+            admin_ids=_split_ids(admins_raw),
+            database_url=db,
+            topic_name_template=tpl,
+        )

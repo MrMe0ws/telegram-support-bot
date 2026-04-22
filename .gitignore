@@ -1,0 +1,48 @@
+agents/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.Python
+*.so
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+
+# Локальные описания для GitHub Releases (не коммитим)
+RELEASE_NOTES_v1.0.md
+
+.env
+.env.local
+.env.*.local
+!.env.example
+data/
+*.sqlite3
+*.db
+.venv/
+venv/
+docs/
+
+# IDE и ОС
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Тесты и покрытие (если появятся)
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# Логи
+*.log

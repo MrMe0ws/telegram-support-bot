@@ -1,0 +1,99 @@
+# Администратор: панель в ЛС (/admin или нижняя кнопка «Админ-панель»)
+
+no_permission: 🚫 Недостаточно прав
+
+btn_admin_panel: ⚙️ Админ-панель
+
+panel_intro: |
+  <b>⚙️ Панель администратора</b>
+  Выберите действие или закройте это сообщение кнопкой ниже.
+
+panel_btn_block: 🚫 Заблокировать
+panel_btn_unblock: ✅ Разблокировать
+panel_btn_help_links: 📚 Кнопки «Помощь»
+panel_btn_close_msg: ✖️ Закрыть
+
+panel_closed: 👍 Сообщение можно удалить из чата.
+
+cancel: ↩️ Отмена
+cancel_done: ✔️ Отменено
+
+back_to_panel: ⬅️ В панель
+
+expect_text: ✍️ На этом шаге нужно отправить обычный текст
+
+block_ask_uid: 🔢 Введите числовой Telegram ID пользователя (одно число в сообщении)
+block_ask_reason: 📝 При желании укажите причину блокировки текстом или нажмите «Без причины»
+block_skip_reason_btn: ⏭️ Без причины
+block_bad_id: ⚠️ Некорректный ID. Отправьте одно число — Telegram user id
+block_success: "🔒 Пользователь {uid} заблокирован."
+
+unblock_ask_uid: 🔢 Введите Telegram ID пользователя для разблокировки
+unblock_bad_id: ⚠️ Некорректный ID
+unblock_success: "✅ Пользователь {uid} разблокирован"
+
+help_ask_title: 📌 Введите заголовок кнопки в разделе «Помощь» (как её увидит клиент)
+help_pick_type_intro: |
+  Выберите тип кнопки для клиента:
+  • <b>Ссылка</b> — одна строка URL (<code>https://</code>, <code>http://</code> или <code>tg://</code>), открывается во внешнем браузере или в Telegram.
+  • <b>Текст</b> — материал в чате бота с кнопкой «Назад». Обычный текст: «голые» ссылки станут кликабельными автоматически; или разметка HTML как в Telegram (<code>&lt;b&gt;</code>, <code>&lt;a href=""&gt;</code>).
+
+help_pick_type_use_buttons: Нажмите одну из кнопок под предыдущим сообщением («Ссылка» или «Текст»).
+
+help_add_type_link_btn: 🔗 Ссылка
+help_add_type_text_btn: 📄 Текст в меню
+
+help_ask_url_only: |
+  📎 Отправьте <b>одну строку</b> со ссылкой — она должна начинаться с <code>http://</code>, <code>https://</code> или <code>tg://</code>.
+
+help_ask_article_body: |
+  📄 Отправьте текст материала (можно несколько строк).
+  Простой текст — адреса вроде <code>https://...</code> и <code>tg://...</code> станут кликабельными сами.
+  Чтобы задать видимый текст ссылки вручную, используйте HTML: <code>&lt;a href="https://..."&gt;Подробнее&lt;/a&gt;</code>.
+
+help_payload_empty: ⚠️ Пустое сообщение — отправьте ссылку или текст статьи
+help_link_validation: ⚠️ Не удалось сохранить. Укажите одну строку-ссылку или текст материала
+help_title_empty: ⚠️ Заголовок не может быть пустым
+
+help_links_hint: "🔗 ссылка · 📄 текст. ▲▼ — порядок, 🗑 удалить, ✏️ изменить заголовок/ссылку/текст"
+
+help_link_btn_up: ▲
+help_link_btn_down: ▼
+help_link_btn_del: 🗑
+help_link_btn_edit: ✏️
+help_link_add_btn: ➕ Добавить пункт
+
+help_edit_header: "✏️ Пункт #{id}: {title}"
+help_edit_current_url: "Текущая ссылка:\n<code>{url}</code>"
+help_edit_current_body: "Текущий текст (начало):\n{snippet}"
+help_edit_empty_payload: "⚠️ Нет ни ссылки, ни текста — добавьте через «Изменить ссылку» или «Изменить текст»."
+help_edit_actions_hint: Выберите, что изменить.
+
+help_edit_btn_title: 📌 Заголовок кнопки
+help_edit_btn_url: 🔗 Ссылку
+help_edit_btn_body: 📄 Текст материала
+help_edit_back_list: ⬅️ К списку пунктов
+
+help_ask_edit_title: 📌 Отправьте новый заголовок кнопки (как увидит клиент).
+help_ask_edit_url: 📎 Отправьте одну строку — новый URL (<code>http(s)://</code> или <code>tg://</code>).
+help_ask_edit_body: 📄 Отправьте новый текст материала (как при создании пункта «Текст»).
+
+help_edit_saved: ✅ Изменения сохранены
+
+help_url_single_line_expected: ⚠️ Нужна одна строка с корректным URL (<code>http(s)://</code> или <code>tg://</code>)
+
+help_delete_confirm: "🗑 Удалить пункт #{id}? Подтвердите"
+
+confirm_yes: ✅ Да, удалить
+confirm_no: ❌ Нет
+
+# Сообщения про список «Помощь» (текст + инлайн-кнопки)
+helplink_usage_list: 📭 Список пуст — добавьте первую ссылку кнопкой ниже
+helplink_added: "✅ Добавлено: #{id} — {title}"
+helplink_deleted: "🗑 Удалено id={id}"
+helplink_not_found: ❓ Пункт с таким id не найден
+helplink_move_ok: ✅ Готово
+helplink_move_edge: ⛔️ Нельзя сдвинуть дальше в этом направлении
+helplink_list_header: "📋 Пункты «Помощь» (id · позиция · заголовок):"
+helplink_list_line: "{idx}. {icon} #{link_id} pos={pos} — {title}"
+helplink_bad_url: ⚠️ Укажите корректный URL (начиная с http:// или https://)
