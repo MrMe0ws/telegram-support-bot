@@ -12,11 +12,11 @@ profile_load_failed: "⚠️ Не удалось загрузить профил
 profile_no_username: не указан
 profile_name_empty: "—"
 
-# line_user, name — экранированы под HTML; user_id — число
+# line_user, name — экранированы под HTML; user_id — число. <code> — копирование по нажатию в клиенте Telegram.
 profile_body_html: |
   👤 {line_user}
-  ID: {user_id}
-  Имя: {name}
+  ID: <code>{user_id}</code>
+  Имя: <code>{name}</code>
 
 profile_send_fallback_failed: "⚠️ Не удалось показать профиль: {error}"
 edit_message_failed: ⚠️ Не удалось вернуть панель. Попробуйте снова.
