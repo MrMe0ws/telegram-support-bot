@@ -93,12 +93,13 @@ async def profile_in_topic(
     name_part = (
         escape(chat.full_name)
         if chat.full_name
-        else tr("callbacks", "profile_name_empty")
+        else escape(tr("callbacks", "profile_name_empty"))
     )
     body = tr(
         "callbacks",
         "profile_body_html",
         line_user=line_u,
+        user_id=ticket.user_id,
         name=name_part,
     )
     await message.reply(body, parse_mode=ParseMode.HTML)

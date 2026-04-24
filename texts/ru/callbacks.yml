@@ -9,13 +9,13 @@ no_message: ⚠️ Нет сообщения
 wrong_topic: ⚠️ Тикет относится к другой теме
 
 profile_load_failed: "⚠️ Не удалось загрузить профиль: {error}"
-profile_no_username: 👤 username не указан
+profile_no_username: не указан
 profile_name_empty: "—"
 
-# HTML для edit_message в группе (line_user, name — уже экранированы)
+# line_user, name — экранированы под HTML; user_id — число
 profile_body_html: |
-  <b>👤 Профиль клиента</b>
-  {line_user}
+  👤 {line_user}
+  ID: {user_id}
   Имя: {name}
 
 profile_send_fallback_failed: "⚠️ Не удалось показать профиль: {error}"
