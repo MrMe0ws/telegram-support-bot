@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections import defaultdict
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
@@ -22,6 +24,10 @@ from app.states import AdminFlow, UserFlow
 log = logging.getLogger(__name__)
 
 router = Router(name="private")
+
+# Один открытый тикет на пользователя: без блокировки параллельные updates
+# могли все увидеть «тикета нет» и создать несколько тем подряд.
+_ticket_creation_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 async def send_help_section(message: Message, session_factory) -> None:
@@ -237,63 +243,68 @@ async def process_support_message(
     uid = message.from_user.id
     rename_after_commit: tuple[int, int, str] | None = None
 
-    async with session_factory() as session:
-        async with session.begin():
-            if await ticket_svc.is_blocked(session, uid):
-                await message.answer(tr("user", "blocked"))
-                return
+    async with _ticket_creation_locks[uid]:
+        async with session_factory() as session:
+            async with session.begin():
+                if await ticket_svc.is_blocked(session, uid):
+                    await message.answer(tr("user", "blocked"))
+                    return
 
-            ticket = await ticket_svc.get_open_ticket(session, uid)
-            thread_id = ticket.thread_id if ticket else None
-            forum_chat_id = settings.support_group_id
+                ticket = await ticket_svc.get_open_ticket(session, uid)
+                thread_id = ticket.thread_id if ticket else None
+                forum_chat_id = settings.support_group_id
 
-            if ticket is None:
-                username = message.from_user.username or message.from_user.full_name or str(uid)
-                tid_placeholder = 0
-                topic_name = settings.topic_name_template.format(
-                    username=username,
-                    ticket_id=tid_placeholder,
-                    uid=uid,
-                    name=message.from_user.full_name or "",
-                )
-                forum = await _create_forum_topic_open(
-                    bot,
-                    settings,
-                    forum_chat_id,
-                    topic_name[:127],
-                )
-                thread_id = forum.message_thread_id
-                ticket = await ticket_svc.create_ticket(
-                    session,
-                    user_id=uid,
-                    forum_chat_id=forum_chat_id,
-                    thread_id=thread_id,
-                    source=MessageSource.telegram.value,
-                )
-                proper_name = settings.topic_name_template.format(
-                    username=username,
-                    ticket_id=ticket.id,
-                    uid=uid,
-                    name=message.from_user.full_name or "",
-                )
-                final_name = proper_name[:127]
-                if final_name != topic_name[:127]:
-                    rename_after_commit = (
-                        forum_chat_id,
-                        thread_id,
-                        final_name,
+                if ticket is None:
+                    username = (
+                        message.from_user.username
+                        or message.from_user.full_name
+                        or str(uid)
                     )
+                    tid_placeholder = 0
+                    topic_name = settings.topic_name_template.format(
+                        username=username,
+                        ticket_id=tid_placeholder,
+                        uid=uid,
+                        name=message.from_user.full_name or "",
+                    )
+                    forum = await _create_forum_topic_open(
+                        bot,
+                        settings,
+                        forum_chat_id,
+                        topic_name[:127],
+                    )
+                    thread_id = forum.message_thread_id
+                    ticket = await ticket_svc.create_ticket(
+                        session,
+                        user_id=uid,
+                        forum_chat_id=forum_chat_id,
+                        thread_id=thread_id,
+                        source=MessageSource.telegram.value,
+                    )
+                    proper_name = settings.topic_name_template.format(
+                        username=username,
+                        ticket_id=ticket.id,
+                        uid=uid,
+                        name=message.from_user.full_name or "",
+                    )
+                    final_name = proper_name[:127]
+                    if final_name != topic_name[:127]:
+                        rename_after_commit = (
+                            forum_chat_id,
+                            thread_id,
+                            final_name,
+                        )
 
-            ct, txt, fid = _content_summary(message)
-            await ticket_svc.record_message(
-                session,
-                ticket_id=ticket.id,
-                direction="in",
-                content_type=ct,
-                text=txt,
-                telegram_file_id=fid,
-                telegram_message_id=message.message_id,
-            )
+                ct, txt, fid = _content_summary(message)
+                await ticket_svc.record_message(
+                    session,
+                    ticket_id=ticket.id,
+                    direction="in",
+                    content_type=ct,
+                    text=txt,
+                    telegram_file_id=fid,
+                    telegram_message_id=message.message_id,
+                )
 
     if rename_after_commit is not None:
         cid, tid, fname = rename_after_commit
