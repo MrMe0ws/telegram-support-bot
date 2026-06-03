@@ -102,14 +102,16 @@ async def get_ticket_by_thread(
     session: AsyncSession,
     forum_chat_id: int,
     thread_id: int,
+    *,
+    open_only: bool = True,
 ) -> Ticket | None:
-    q = await session.execute(
-        select(Ticket).where(
-            Ticket.forum_chat_id == forum_chat_id,
-            Ticket.thread_id == thread_id,
-            Ticket.status == TicketStatus.open.value,
-        )
-    )
+    clauses = [
+        Ticket.forum_chat_id == forum_chat_id,
+        Ticket.thread_id == thread_id,
+    ]
+    if open_only:
+        clauses.append(Ticket.status == TicketStatus.open.value)
+    q = await session.execute(select(Ticket).where(*clauses))
     return q.scalar_one_or_none()
 
 

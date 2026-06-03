@@ -242,6 +242,7 @@ async def process_support_message(
 ):
     uid = message.from_user.id
     rename_after_commit: tuple[int, int, str] | None = None
+    created_new_ticket = False
 
     async with _ticket_creation_locks[uid]:
         async with session_factory() as session:
@@ -281,6 +282,7 @@ async def process_support_message(
                         thread_id=thread_id,
                         source=MessageSource.telegram.value,
                     )
+                    created_new_ticket = True
                     proper_name = settings.topic_name_template.format(
                         username=username,
                         ticket_id=ticket.id,
@@ -309,6 +311,9 @@ async def process_support_message(
     if rename_after_commit is not None:
         cid, tid, fname = rename_after_commit
         await _rename_topic_if_needed(bot, chat_id=cid, message_thread_id=tid, new_name=fname)
+
+    if created_new_ticket:
+        await message.answer(tr("user", "ticket_accepted"))
 
     ticket_pk = ticket.id
     current_thread_id = thread_id

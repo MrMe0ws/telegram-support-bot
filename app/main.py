@@ -20,6 +20,7 @@ from app.handlers import (
 )
 from app.i18n import texts_bundle
 from app.services.help_links import seed_help_links_if_empty
+from app.services.remnawave_client import log_remnawave_connectivity
 
 
 def _configure_logging() -> None:
@@ -47,6 +48,7 @@ log = logging.getLogger(__name__)
 async def main() -> None:
     texts_bundle()
     settings = Settings.from_env()
+    await log_remnawave_connectivity(settings.remnawave)
     engine = create_engine(settings.database_url)
     await init_db(engine)
     sf = session_factory(engine)

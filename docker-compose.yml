@@ -6,9 +6,16 @@ services:
       - .env
     volumes:
       - ./data:/data
+    # networks:
+    #   - remnawave-network
     deploy:
       resources:
         limits:
           memory: 256M
         reservations:
           memory: 128M
+
+# networks:
+#   remnawave-network:
+#     name: remnawave-network
+#     external: true

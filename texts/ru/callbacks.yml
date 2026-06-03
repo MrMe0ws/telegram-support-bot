@@ -18,5 +18,8 @@ profile_body_html: |
   ID: <code>{user_id}</code>
   Имя: <code>{name}</code>
 
+profile_remnawave_not_found: "⚠️ В Remnawave пользователь с этим Telegram ID не найден."
+profile_remnawave_error: "⚠️ Remnawave: {error}"
+
 profile_send_fallback_failed: "⚠️ Не удалось показать профиль: {error}"
 edit_message_failed: ⚠️ Не удалось вернуть панель. Попробуйте снова.

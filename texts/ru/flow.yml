@@ -8,8 +8,6 @@ closed_ok: ✅ Обращение закрыто
 notify_user_default: |
   ✅ Обращение закрыто. Если снова понадобится помощь — напишите нам 💬
 
-notify_thread_close_command: "✅ Тикет закрыт командой /close."
-
 notify_thread_user_button: 👤 Клиент закрыл тикет командой /close в боте
 
 notify_thread_staff_button: "✅ Тикет закрыт по кнопке администратора."

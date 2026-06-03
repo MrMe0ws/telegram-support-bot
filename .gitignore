@@ -1,4 +1,3 @@
-agents/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -14,6 +13,7 @@ pip-wheel-metadata/
 
 # Локальные описания для GitHub Releases (не коммитим)
 RELEASE_NOTES_v1.0.md
+.cursor/
 
 .env
 .env.local

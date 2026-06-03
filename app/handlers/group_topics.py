@@ -11,6 +11,8 @@ from aiogram.types import Message
 from app.i18n import tr
 from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import tickets as ticket_svc
+from app.services.remnawave_client import RemnawaveApiError, RemnawaveClient
+from app.services.remnawave_profile import format_remnawave_profile_block
 from app.services.ticket_flow import close_ticket_by_id
 
 log = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ async def close_in_topic(
         settings,
         ticket_id=ticket.id,
         notify_user_text=tr("flow", "notify_user_default"),
-        notify_thread_text=tr("flow", "notify_thread_close_command"),
+        notify_thread_text=None,
     )
     await message.reply(msg)
 
@@ -73,10 +75,15 @@ async def profile_in_topic(
         return
 
     async with session_factory() as session:
-        ticket = await ticket_svc.get_ticket_by_thread(session, message.chat.id, tid)
+        ticket = await ticket_svc.get_ticket_by_thread(
+            session,
+            message.chat.id,
+            tid,
+            open_only=False,
+        )
 
     if ticket is None:
-        await message.reply(tr("group", "no_open_ticket_in_thread"))
+        await message.reply(tr("group", "no_ticket_in_thread"))
         return
 
     try:
@@ -95,6 +102,47 @@ async def profile_in_topic(
         if chat.full_name
         else escape(tr("callbacks", "profile_name_empty"))
     )
+
+    rw = settings.remnawave
+    if rw.is_configured:
+        client = RemnawaveClient(rw)
+        try:
+            rw_user = await client.fetch_user_by_telegram_id(ticket.user_id)
+        except RemnawaveApiError as e:
+            tg_block = tr(
+                "callbacks",
+                "profile_body_html",
+                line_user=line_u,
+                user_id=ticket.user_id,
+                name=name_part,
+            )
+            err = tr("callbacks", "profile_remnawave_error", error=escape(str(e)))
+            await message.reply(f"{tg_block}\n\n{err}", parse_mode=ParseMode.HTML)
+            return
+
+        if rw_user is None:
+            tg_block = tr(
+                "callbacks",
+                "profile_body_html",
+                line_user=line_u,
+                user_id=ticket.user_id,
+                name=name_part,
+            )
+            await message.reply(
+                f"{tg_block}\n\n{tr('callbacks', 'profile_remnawave_not_found')}",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        body = format_remnawave_profile_block(
+            rw_user,
+            telegram_username_line=line_u,
+            telegram_id=ticket.user_id,
+            settings=rw,
+        )
+        await message.reply(body, parse_mode=ParseMode.HTML)
+        return
+
     body = tr(
         "callbacks",
         "profile_body_html",
