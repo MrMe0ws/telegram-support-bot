@@ -9,10 +9,6 @@
 ---
 
 <img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/e8d1da1b-5c06-41db-bc50-2dbf7c48c08d" />
-<<<<<<< HEAD
-=======
-
->>>>>>> 6286e4bc16fc3f3ba0928b5e472d15e0f8940fd8
 
 ---
 
