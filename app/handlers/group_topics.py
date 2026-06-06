@@ -8,8 +8,10 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.db.models import MessageSource
 from app.i18n import tr
 from app.services import reaction_bridge as reaction_bridge_svc
+from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
 from app.services.remnawave_client import RemnawaveApiError, RemnawaveClient
 from app.services.remnawave_profile import format_remnawave_profile_block
@@ -18,6 +20,83 @@ from app.services.ticket_flow import close_ticket_by_id
 log = logging.getLogger(__name__)
 
 router = Router(name="group_topics")
+
+
+def _is_staff_command(text: str | None) -> bool:
+    if not text:
+        return False
+    head = text.strip().split()[0].lower()
+    if not head.startswith("/"):
+        return False
+    cmd = head.split("@", 1)[0]
+    return cmd in ("/profile", "/close")
+
+
+async def _cabinet_profile_line_user(bot: Bot, ticket) -> str:
+    tg_id = ticket.linked_telegram_id
+    if not tg_id:
+        return escape("кабинет (TG не привязан)")
+    try:
+        chat = await bot.get_chat(tg_id)
+    except Exception:
+        return escape(f"кабинет · TG {tg_id}")
+    username = getattr(chat, "username", None)
+    if username:
+        return f"@{escape(username)}"
+    if chat.full_name:
+        return escape(chat.full_name)
+    return escape(f"кабинет · TG {tg_id}")
+
+
+async def _reply_cabinet_profile(
+    message: Message,
+    bot: Bot,
+    settings,
+    ticket,
+) -> None:
+    tg_id = ticket.linked_telegram_id
+    line_u = await _cabinet_profile_line_user(bot, ticket)
+    rw = settings.remnawave
+
+    if rw.is_configured and tg_id:
+        client = RemnawaveClient(rw)
+        try:
+            rw_user = await client.fetch_user_by_telegram_id(tg_id)
+        except RemnawaveApiError as e:
+            shop_tid = shop_webhook_svc.shop_ticket_id(ticket)
+            header = (
+                f"🌐 Кабинет · account <code>{ticket.user_id}</code>\n"
+                f"Shop ticket: <code>{shop_tid or '—'}</code>"
+            )
+            err = tr("callbacks", "profile_remnawave_error", error=escape(str(e)))
+            await message.reply(f"{header}\n\n{err}", parse_mode=ParseMode.HTML)
+            return
+
+        if rw_user is not None:
+            body = format_remnawave_profile_block(
+                rw_user,
+                telegram_username_line=line_u,
+                telegram_id=tg_id,
+                settings=rw,
+            )
+            await message.reply(body, parse_mode=ParseMode.HTML)
+            return
+
+    shop_tid = shop_webhook_svc.shop_ticket_id(ticket)
+    header = (
+        f"🌐 Кабинет · account <code>{ticket.user_id}</code>\n"
+        f"Shop ticket: <code>{shop_tid or '—'}</code>"
+    )
+    if not tg_id:
+        await message.reply(
+            f"{header}\n\nTelegram не привязан — профиль Remnawave недоступен.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    await message.reply(
+        f"{header}\n\n{tr('callbacks', 'profile_remnawave_not_found')}",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 @router.message(
@@ -84,6 +163,10 @@ async def profile_in_topic(
 
     if ticket is None:
         await message.reply(tr("group", "no_ticket_in_thread"))
+        return
+
+    if ticket.source == MessageSource.cabinet.value:
+        await _reply_cabinet_profile(message, bot, settings, ticket)
         return
 
     try:
@@ -171,6 +254,10 @@ async def staff_reply(
     if message.chat.id != settings.support_group_id:
         return
 
+    text_raw = message.text or message.caption
+    if _is_staff_command(text_raw):
+        return
+
     async with session_factory() as session:
         async with session.begin():
             ticket = await ticket_svc.get_ticket_by_thread(session, message.chat.id, tid)
@@ -211,6 +298,18 @@ async def staff_reply(
                 telegram_file_id=fid,
                 telegram_message_id=message.message_id,
             )
+
+            if ticket.source == MessageSource.cabinet.value:
+                if not text:
+                    text = tr("group", "support_reply_fallback")
+                await shop_webhook_svc.deliver_staff_reply(
+                    settings,
+                    ticket,
+                    text=text,
+                    author_label="Поддержка",
+                    support_bot_message_id=message.message_id,
+                )
+                return
 
     try:
         copied = await bot.copy_message(

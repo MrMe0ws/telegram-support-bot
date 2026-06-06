@@ -24,6 +24,7 @@ class MessageSource(enum.StrEnum):
     telegram = "telegram"
     vk = "vk"
     max = "max"
+    cabinet = "cabinet"
 
 
 class TicketStatus(enum.StrEnum):
@@ -37,6 +38,7 @@ class Ticket(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     external_uid: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    linked_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     source: Mapped[str] = mapped_column(String(32), default=MessageSource.telegram.value)
     status: Mapped[str] = mapped_column(String(16), default=TicketStatus.open.value)
     forum_chat_id: Mapped[int] = mapped_column(BigInteger)
@@ -98,6 +100,9 @@ class StoredMessage(Base):
     telegram_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     raw_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_message_id: Mapped[str | None] = mapped_column(
+        String(36), unique=True, nullable=True, index=True
+    )  # UUID idempotency key от shop
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     ticket: Mapped["Ticket"] = relationship(back_populates="messages")

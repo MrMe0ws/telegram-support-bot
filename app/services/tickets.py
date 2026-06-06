@@ -90,6 +90,30 @@ async def update_ticket_thread(
     await session.execute(update(Ticket).where(Ticket.id == ticket_id).values(**vals))
 
 
+async def update_ticket_external_uid(
+    session: AsyncSession,
+    ticket_id: int,
+    external_uid: str,
+) -> None:
+    await session.execute(
+        update(Ticket)
+        .where(Ticket.id == ticket_id)
+        .values(external_uid=external_uid)
+    )
+
+
+async def update_ticket_linked_telegram_id(
+    session: AsyncSession,
+    ticket_id: int,
+    telegram_id: int | None,
+) -> None:
+    await session.execute(
+        update(Ticket)
+        .where(Ticket.id == ticket_id)
+        .values(linked_telegram_id=telegram_id)
+    )
+
+
 async def close_ticket(session: AsyncSession, ticket_id: int) -> None:
     await session.execute(
         update(Ticket)
@@ -115,6 +139,17 @@ async def get_ticket_by_thread(
     return q.scalar_one_or_none()
 
 
+async def get_message_by_client_id(
+    session: AsyncSession,
+    client_message_id: str,
+) -> StoredMessage | None:
+    """Найти сообщение по idempotency key (для dedup cabinet-сообщений)."""
+    q = await session.execute(
+        select(StoredMessage).where(StoredMessage.client_message_id == client_message_id)
+    )
+    return q.scalar_one_or_none()
+
+
 async def record_message(
     session: AsyncSession,
     *,
@@ -125,15 +160,18 @@ async def record_message(
     telegram_file_id: str | None,
     telegram_message_id: int | None,
     raw_note: str | None = None,
-) -> None:
-    session.add(
-        StoredMessage(
-            ticket_id=ticket_id,
-            direction=direction,
-            content_type=content_type,
-            text=text,
-            telegram_file_id=telegram_file_id,
-            telegram_message_id=telegram_message_id,
-            raw_note=raw_note,
-        )
+    client_message_id: str | None = None,
+) -> StoredMessage:
+    msg = StoredMessage(
+        ticket_id=ticket_id,
+        direction=direction,
+        content_type=content_type,
+        text=text,
+        telegram_file_id=telegram_file_id,
+        telegram_message_id=telegram_message_id,
+        raw_note=raw_note,
+        client_message_id=client_message_id,
     )
+    session.add(msg)
+    await session.flush()
+    return msg

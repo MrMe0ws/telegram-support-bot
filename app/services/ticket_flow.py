@@ -5,8 +5,9 @@ import logging
 from aiogram import Bot
 
 from app.config import Settings
-from app.db.models import TicketStatus
+from app.db.models import MessageSource, TicketStatus
 from app.i18n import tr
+from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,8 @@ async def close_ticket_by_id(
     forum_chat_id: int | None = None
     thread_id: int | None = None
     user_id: int | None = None
+    ticket_source: str | None = None
+    external_uid: str | None = None
 
     async with session_factory() as session:
         async with session.begin():
@@ -39,6 +42,8 @@ async def close_ticket_by_id(
             forum_chat_id = ticket.forum_chat_id
             thread_id = ticket.thread_id
             user_id = ticket.user_id
+            ticket_source = ticket.source
+            external_uid = ticket.external_uid
             await ticket_svc.close_ticket(session, ticket.id)
 
     if notify_thread_text and forum_chat_id is not None and thread_id is not None:
@@ -74,7 +79,16 @@ async def close_ticket_by_id(
         except Exception as e:
             log.warning("close_forum_topic: %s", e)
 
-    if notify_user_text and user_id is not None:
+    if ticket_source == MessageSource.cabinet.value:
+        await shop_webhook_svc.notify_ticket_closed(
+            settings,
+            type(
+                "CabinetTicketSnapshot",
+                (),
+                {"id": ticket_id, "user_id": user_id, "external_uid": external_uid},
+            )(),
+        )
+    elif notify_user_text and user_id is not None:
         try:
             await bot.send_message(chat_id=user_id, text=notify_user_text)
         except Exception as e:

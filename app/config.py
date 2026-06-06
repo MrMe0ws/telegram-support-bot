@@ -54,6 +54,9 @@ class Settings:
     # ID кастомного emoji для иконки темы (открытый / закрытый тикет). Пустая строка — не выставлять.
     topic_icon_emoji_open: str
     topic_icon_emoji_closed: str
+    shop_webhook_url: str
+    support_bridge_secret: str
+    http_port: int
     remnawave: RemnawaveSettings
 
     @staticmethod
@@ -123,5 +126,8 @@ class Settings:
             topic_name_template=tpl,
             topic_icon_emoji_open=icon_open,
             topic_icon_emoji_closed=icon_closed,
+            shop_webhook_url=os.environ.get("SHOP_WEBHOOK_URL", "").strip(),
+            support_bridge_secret=os.environ.get("SUPPORT_BRIDGE_SECRET", "").strip(),
+            http_port=int(os.environ.get("HTTP_PORT", "8080") or "8080"),
             remnawave=remnawave,
         )

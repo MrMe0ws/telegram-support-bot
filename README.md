@@ -4,12 +4,11 @@
 
 Поддерживаются **текст**, **фото**, **видео**, **видеосообщения (кружки)**, **документы**, **аудиофайлы**, **голосовые сообщения**, **стикеры** и **реакции** на сообщения (зеркалирование ЛС ↔ топик). 
 Так же доступны блокировки, история в **SQLite**, **админ-панель** в ЛС (инлайн-кнопки), закрытие тикета командами **`/close`** (у клиента и у админа в теме), **`/profile`** в теме для админа.
+Поддержка Remnawave Panel и Telegram Meows Shop bot VPN(cabinet)
 
 ---
 
-<img width="410" height="129" alt="Screenshot_1" src="https://github.com/user-attachments/assets/713e5160-bc7f-4715-ac81-d486b036e8be" />
---
-<img width="427" height="273" alt="Screenshot_2" src="https://github.com/user-attachments/assets/c1ca0722-14c4-40d2-aa7f-86d46dd78768" />
+<img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/e8d1da1b-5c06-41db-bc50-2dbf7c48c08d" />
 
 ---
 
@@ -83,8 +82,12 @@
 | `REMNAWAVE_GATE_COOKIE` | нет | Cookie для nginx gate (`remote`) |
 | `REMNAWAVE_TIMEOUT_SEC` | нет | Таймаут HTTP к панели (по умолчанию 10) |
 | `BOT_TIMEZONE` | нет | Часовой пояс дат в `/profile` (по умолчанию `UTC`) |
+| `SHOP_WEBHOOK_URL` | нет* | URL webhook shop для ответов саппорта из cabinet-тикетов (см. раздел «Bridge к web-кабинету») |
+| `SUPPORT_BRIDGE_SECRET` | нет* | Общий Bearer-секрет с shop (`SUPPORT_BRIDGE_SECRET` в remnawave-telegram-shop) |
+| `HTTP_PORT` | нет | Порт HTTP sidecar для `POST /internal/cabinet/message` (по умолчанию `8080`) |
 
-\* Обязательны, если `REMNAWAVE_ENABLED=true`.
+\* `REMNAWAVE_*` (кроме перечисленных отдельно) обязательны, если `REMNAWAVE_ENABLED=true`.  
+\* `SHOP_WEBHOOK_URL` и `SUPPORT_BRIDGE_SECRET` обязательны вместе, если shop включил `SUPPORT_BOT_API=true`.
 
 ### Remnawave в `/profile`
 
@@ -122,6 +125,72 @@ REMNAWAVE_GATE_QUERY_VALUE=...
 ```
 
 Токены и значения gate **не коммитьте** в git.
+
+---
+
+## Bridge к web-кабинету (remnawave-telegram-shop)
+
+Опциональная связка с **[remnawave-telegram-shop](https://github.com/Jolymmiels/remnawave-telegram-shop)**: пользователь пишет в SPA-кабинете VPN shop, сообщения попадают в **тот же форум** саппорта, ответы саппорта возвращаются в кабинет через webhook.
+
+### Архитектура
+
+```
+Кабинет (SPA) → shop API → POST /internal/cabinet/message → топик (source=cabinet)
+Саппорт отвечает в TG → shop webhook → polling в кабинете
+Telegram DM в этом боте — без изменений (source=telegram)
+```
+
+В shop включается **`SUPPORT_BOT_API=true`** (миграция `000036_cabinet_support`). Подробная настройка shop — **`documentation/cabinet/SETUP-GUIDE-RU.md`** в репозитории shop.
+
+### HTTP API (sidecar)
+
+Параллельно с long polling Telegram поднимается aiohttp-сервер на **`HTTP_PORT`** (по умолчанию `8080`):
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `POST` | `/internal/cabinet/message` | Принять сообщение из shop; заголовок `Authorization: Bearer <SUPPORT_BRIDGE_SECRET>` |
+
+Тело запроса (JSON): `account_id`, `shop_ticket_id`, `text`, `display_name`, `telegram_label`, `email`, `subscription_summary`, `is_new_ticket`, опционально **`client_message_id`** (UUID, idempotency — колонка `messages.client_message_id`, миграция при старте в `app/db/session.py`).
+
+### Переменные окружения
+
+| Переменная | Описание |
+|------------|----------|
+| `SHOP_WEBHOOK_URL` | Webhook shop, напр. `http://shop:8080/cabinet/api/internal/support/webhook` |
+| `SUPPORT_BRIDGE_SECRET` | Тот же секрет, что `SUPPORT_BRIDGE_SECRET` в shop |
+| `HTTP_PORT` | Порт sidecar (по умолчанию `8080`) |
+
+**Shop `.env` (пример, та же docker-сеть):**
+
+```env
+SUPPORT_BOT_API=true
+SUPPORT_BOT_API_URL=http://support-bot:8080
+SUPPORT_BRIDGE_SECRET=<общий-секрет>
+```
+
+**Support-bot `.env`:**
+
+```env
+SHOP_WEBHOOK_URL=http://shop:8080/cabinet/api/internal/support/webhook
+SUPPORT_BRIDGE_SECRET=<тот-же-секрет>
+HTTP_PORT=8080
+```
+
+Имена сервисов `shop` / `support-bot` — примеры; используйте DNS-имена из вашего `docker-compose.yml`. Не `localhost` между контейнерами.
+
+### Поведение для саппорта
+
+- Cabinet-тикеты — отдельный канал **`MessageSource.cabinet`**: в топике видны метка кабинета, email/TG/подписка из shop.
+- Ответ саппорта в топике **не уходит в Telegram DM** пользователю — только webhook в shop.
+- **`/close`** в топике cabinet-тикета шлёт событие `closed` в shop; история в модале кабинета после закрытия не показывается (новое сообщение = новый тикет).
+
+### Ограничения MVP
+
+- Из кабинета принимается только **текст**.
+- **Медиа** от саппорта в кабинет **не доставляются**.
+- **Один open-тикет** на `account_id` (на стороне shop).
+
+**Код:** `app/http/server.py`, `app/services/cabinet_bridge.py`, `app/services/shop_webhook.py`, `app/handlers/group_topics.py` (ответы и `/close` для `source=cabinet`).
 
 ---
 
@@ -188,8 +257,9 @@ app/
   states.py            # FSM-состояния (админка, сценарий обращения)
   db/                  # модели SQLAlchemy, сессия
   handlers/            # роутеры aiogram: private_chat, admin_panel, group_topics, help_callbacks, message_reactions
+  http/                # aiohttp sidecar: POST /internal/cabinet/message (bridge к shop)
   keyboards/           # инлайн-клавиатуры (тексты из YAML)
-  services/            # тикеты, «Помощь», реакции, remnawave_client, remnawave_profile
+  services/            # тикеты, «Помощь», реакции, cabinet_bridge, shop_webhook, remnawave_client, remnawave_profile
 texts/ru/              # тексты интерфейса (*.yml)
 docker-compose.yml
 Dockerfile
