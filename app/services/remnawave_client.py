@@ -35,11 +35,33 @@ class RemnawaveUser:
 
 
 def _looks_like_user_dict(obj: dict[str, Any]) -> bool:
+    # Remnawave 3.0.0 удалил поле `uuid` у пользователя: остались числовой `id`
+    # и `shortUuid`. Проверка на "uuid" оставлена ради совместимости с 2.8,
+    # но на 3.x она уже не срабатывает.
     return (
         "telegramId" in obj
+        or "shortUuid" in obj
         or "uuid" in obj
         or ("username" in obj and "status" in obj)
     )
+
+
+def _users_from_stream(data: Any) -> list[dict[str, Any]]:
+    """Достаёт список пользователей из ответа GET /api/users/stream.
+
+    Форма: {"response": {"users": [...], "nextCursor": ..., "hasMore": ...}}.
+    Обычная распаковка (_unwrap_user_payload) сюда не подходит: она ищет первый
+    похожий на пользователя словарь и внутрь списка `users` не заходит.
+    """
+    if not isinstance(data, dict):
+        return []
+    response = data.get("response")
+    if not isinstance(response, dict):
+        return []
+    users = response.get("users")
+    if not isinstance(users, list):
+        return []
+    return [u for u in users if isinstance(u, dict)]
 
 
 def _find_user_dict(data: Any, *, depth: int = 0) -> dict[str, Any] | None:
@@ -188,21 +210,29 @@ class RemnawaveClient:
     def __init__(self, settings: RemnawaveSettings) -> None:
         self._settings = settings
 
-    def _api_url(self, path: str) -> str:
+    def _api_url(self, path: str, params: dict[str, Any] | None = None) -> str:
         base = self._settings.base_url.rstrip("/") + path
+        query: dict[str, Any] = dict(params or {})
         if (
             self._settings.mode == "remote"
             and self._settings.gate_query_name
             and self._settings.gate_query_value
         ):
-            q = urlencode(
-                {self._settings.gate_query_name: self._settings.gate_query_value},
-            )
-            return f"{base}?{q}"
-        return base
+            query[self._settings.gate_query_name] = self._settings.gate_query_value
+        if not query:
+            return base
+        # Параметры собираются в один словарь, а не приклеиваются через "?" по очереди:
+        # у /api/users/stream уже есть свои параметры, и второй "?" сломал бы URL.
+        return f"{base}?{urlencode(query)}"
 
     def _build_url(self, telegram_id: int) -> str:
-        return self._api_url(f"/api/users/by-telegram-id/{telegram_id}")
+        # Remnawave 3.0.0 удалил GET /api/users/by-telegram-id/{id}.
+        # Замена — стрим с фильтром; size=100 с запасом: у одного Telegram-аккаунта
+        # профилей в панели считанные единицы.
+        return self._api_url(
+            "/api/users/stream",
+            {"telegramId": str(telegram_id), "size": 100},
+        )
 
     def _headers(self) -> dict[str, str]:
         headers = {
@@ -289,8 +319,9 @@ class RemnawaveClient:
             )
         return payload
 
-    async def fetch_user_by_uuid(self, uuid: str) -> RemnawaveUser | None:
-        payload = await self._fetch_user_payload(f"/api/users/{uuid}")
+    async def fetch_user_by_id(self, user_id: int) -> RemnawaveUser | None:
+        """GET /api/users/{userId}. До 3.0.0 путь принимал uuid."""
+        payload = await self._fetch_user_payload(f"/api/users/{user_id}")
         if not payload:
             return None
         return parse_remnawave_user(
@@ -302,12 +333,28 @@ class RemnawaveClient:
         self,
         telegram_id: int,
     ) -> RemnawaveUser | None:
-        payload = await self._fetch_user_payload(
-            f"/api/users/by-telegram-id/{telegram_id}",
-        )
-        if not payload:
+        status, data = await self._request_json(self._build_url(telegram_id))
+        if status == 404:
+            return None
+        if status in (401, 403):
+            raise RemnawaveApiError(
+                f"HTTP {status}: проверьте REMNAWAVE_TOKEN и доступ к API",
+            )
+        if status >= 400:
+            text = str(data)[:200] if data is not None else ""
+            raise RemnawaveApiError(f"HTTP {status}: {text}")
+
+        # Фильтр стрима перепроверяем сами. Раньше отбор гарантировал сам эндпоинт
+        # by-telegram-id, теперь это query-параметр: если панель его проигнорирует,
+        # сюда приедут чужие профили, и оператор увидит в /profile чужую подписку.
+        candidates = [
+            u for u in _users_from_stream(data)
+            if _int_or_none(u.get("telegramId")) == telegram_id
+        ]
+        if not candidates:
             return None
 
+        payload = candidates[0]
         user = parse_remnawave_user(
             payload,
             sub_public_url=self._settings.sub_public_url,
@@ -315,22 +362,22 @@ class RemnawaveClient:
         if _parsed_user_meaningful(user):
             return user
 
-        uuid = payload.get("uuid")
-        if isinstance(uuid, str) and uuid:
+        # Стрим отдаёт урезанную карточку — догружаем полную по числовому id.
+        user_id = _int_or_none(payload.get("id"))
+        if user_id:
             log.info(
-                "Remnawave: by-telegram-id без полей, догружаем GET /api/users/%s",
-                uuid,
+                "Remnawave: stream отдал профиль без полей, догружаем GET /api/users/%s",
+                user_id,
             )
-            detailed = await self.fetch_user_by_uuid(uuid)
+            detailed = await self.fetch_user_by_id(user_id)
             if detailed and _parsed_user_meaningful(detailed):
                 return detailed
 
-        if not _parsed_user_meaningful(user):
-            log.warning(
-                "Remnawave: разбор без полей, payload keys=%s",
-                list(payload.keys())[:24],
-            )
-        return user if _parsed_user_meaningful(user) else None
+        log.warning(
+            "Remnawave: разбор без полей, payload keys=%s",
+            list(payload.keys())[:24],
+        )
+        return None
 
 
 async def log_remnawave_connectivity(settings: RemnawaveSettings) -> None:

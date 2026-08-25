@@ -1,45 +1,58 @@
-# Релиз v1.3.0
+# Релиз 2.0.0
 
 ## Вариант для GitHub Releases
 
-## 🚀 Новое
+## 🚨 Главное: требуется Remnawave 3.0.0 и выше
 
-- **Bridge к web-кабинету (remnawave-telegram-shop)** — при `SUPPORT_BOT_API=true` в shop support-bot принимает сообщения из кабинета и создаёт/продолжает forum-топики с **`MessageSource.cabinet`**
-- **HTTP sidecar (aiohttp):** `POST /internal/cabinet/message` — Bearer `SUPPORT_BRIDGE_SECRET`; порт **`HTTP_PORT`** (по умолчанию `8080`)
-- **Webhook в shop:** `SHOP_WEBHOOK_URL` — доставка ответов саппорта и события **`closed`** после `/close` в cabinet-топике
-- **Команды для cabinet-тикетов:** `/profile` (Remnawave-профиль при привязанном TG) и `/close` с уведомлением shop
+В версии 3.0.0 панель Remnawave удалила эндпоинт поиска пользователя по Telegram ID и убрала у пользователя поле `uuid`, заменив его числовым `id`. Именно этими вызовами пользовалась команда **`/profile`**, поэтому после обновления панели она перестала показывать подписку и отвечала ошибкой.
 
-## ✨ Улучшения
+Эта версия переводит интеграцию на новый API панели.
 
-- **Идемпотентность** — dedup по `client_message_id` на стороне support-bot; повтор POST из shop не дублирует сообщение в топике
-- **Контекст тикета** — `linked_telegram_id`, `external_uid` вида `shop:{ticket_id}`; первое сообщение в топике с меткой кабинета, email и подпиской
-- **Ответы саппорта** — для `source=cabinet` текст/caption уходит в shop webhook; автор в кабинете всегда «Поддержка»
+**Если у вас панель 2.8 — не обновляйтесь**, оставайтесь на 1.3.0. Либо обновите панель до 3.x, либо выключите интеграцию через `REMNAWAVE_ENABLED=false`: без неё бот работает как прежде.
 
-## 🧱 Технические изменения
+Токен панели менять не нужно — при обновлении Remnawave переносит права API-токенов сама.
 
-- **Новые модули:** `app/http/server.py`, `app/services/cabinet_bridge.py`, `app/services/shop_webhook.py`
-- **Расширения:** `app/handlers/group_topics.py`, `app/services/tickets.py`, `app/db/models.py` (`MessageSource.cabinet`, `client_message_id`), auto-migration в `app/db/session.py`
-- **Env:** `SHOP_WEBHOOK_URL`, `SUPPORT_BRIDGE_SECRET`, `HTTP_PORT` — см. `.env.example` и README (раздел «Bridge к web-кабинету»)
-- **Авторизация bridge:** `hmac.compare_digest` для Bearer-токена на `/internal/cabinet/message`
+## 🐛 Что чинится
+
+- **`/profile` снова показывает подписку** — статус, трафик, HWID, тег, сквады и ссылку на sub.
+- **Оператор не увидит чужую карточку.** Раньше отбор пользователя гарантировал сам эндпоинт панели. Теперь это параметр запроса, и бот дополнительно перепроверяет, что вернувшийся профиль действительно принадлежит нужному Telegram ID.
+- **Починен URL в режиме `remote`** с включённым gate-параметром: у нового эндпоинта есть свои параметры запроса, и раньше они склеились бы в неверный адрес.
+
+## ⚠️ При обновлении
+
+1. Убедитесь, что панель обновлена до **3.0.0 или выше** (или что `REMNAWAVE_ENABLED=false`).
+2. Обновите образ бота до **2.0.0**.
+
+Ничего другого делать не нужно: переменные окружения не менялись, миграций базы нет.
+
+Всё, что не связано с Remnawave — тикеты, топики, переписка, мост с web-кабинетом — работает без изменений.
 
 ---
 
 ## Вариант для Telegram
 
-1.3.0 https://github.com/MrMe0ws/telegram-support-bot/releases/tag/1.3.0
+2.0.0 https://github.com/MrMe0ws/telegram-support-bot/releases/tag/2.0.0
 
-🚀 Новое
-• Bridge к web-кабинету shop: cabinet-сообщения → forum-топики MessageSource.cabinet
-• HTTP sidecar POST /internal/cabinet/message с Bearer SUPPORT_BRIDGE_SECRET
-• Webhook SHOP_WEBHOOK_URL: ответы саппорта и closed после /close
-• /profile и /close для cabinet-тикетов с Remnawave при привязанном TG
+🚨 Главное
 
-✨ Улучшения
-• Dedup по client_message_id — без дублей при retry shop
-• external_uid shop:{id}, linked_telegram_id, контекст email/подписки в первом сообщении
-• Ответы в cabinet-топике уходят в shop; автор в кабинете — Поддержка
+• Требуется Remnawave 3.0.0 и выше. В 3.0.0 панель удалила поиск пользователя по Telegram ID и поле uuid — именно ими пользовалась команда /profile, поэтому после обновления панели она отвечала ошибкой.
 
-🧱 Технические изменения
-• cabinet_bridge, shop_webhook, http/server; правки group_topics и tickets
-• Env SHOP_WEBHOOK_URL, SUPPORT_BRIDGE_SECRET, HTTP_PORT в README и .env.example
-• Bearer через hmac.compare_digest на internal endpoint
+• Если у вас панель 2.8 — не обновляйтесь, оставайтесь на 1.3.0. Либо обновите панель, либо выключите интеграцию через REMNAWAVE_ENABLED=false.
+
+• Токен панели менять не нужно: права API-токенов Remnawave переносит сама.
+
+🐛 Что чинится
+
+• /profile снова показывает подписку: статус, трафик, HWID, тег, сквады и ссылку на sub.
+
+• Оператор не увидит чужую карточку — бот перепроверяет, что вернувшийся профиль действительно принадлежит нужному Telegram ID.
+
+• Починен URL в режиме remote с gate-параметром.
+
+⚠️ При обновлении
+
+• Убедитесь, что панель на 3.0.0+ (или что REMNAWAVE_ENABLED=false), затем обновите образ до 2.0.0.
+
+• Переменные окружения не менялись, миграций базы нет.
+
+• Тикеты, топики, переписка и мост с web-кабинетом работают без изменений.
