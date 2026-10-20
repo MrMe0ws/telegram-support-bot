@@ -16,6 +16,7 @@ from sqlalchemy import func, select, update
 from app.config import Settings
 from app.db.models import AiDraft, AiDraftStatus, MessageSource, StoredMessage, Ticket, TicketStatus
 from app.i18n import tr
+from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
 from app.services.ai.knowledge import KnowledgeLoader
@@ -311,11 +312,15 @@ class AiService:
             snap = _snapshot(t)
         await self._topic_send(snap, html)
 
-    async def _to_client(self, snap: _TicketSnapshot, text: str, *, message_id: int | None, with_button: bool) -> bool:
+    async def _to_client(
+        self, snap: _TicketSnapshot, text: str, *, message_id: int | None, with_button: bool
+    ) -> tuple[bool, int | None]:
         """
         Ответ клиенту в формате его канала. text — разметка модели (см. formatting):
         в Telegram она становится HTML, в чат кабинета уходит простым текстом —
         кабинет показывает сообщение как есть.
+
+        Возвращает (доставлено, id сообщения в ЛС клиента — только для Telegram).
         """
         if snap.is_cabinet:
             ticket = Ticket(id=snap.id, user_id=snap.user_id, external_uid=snap.external_uid)
@@ -326,33 +331,33 @@ class AiService:
                 author_label=self._ai.assistant_name,
                 support_bot_message_id=message_id or 0,
             )
-            return True
+            return True, None
         markup = kb_call_human(snap.id) if with_button else None
         try:
-            await self._bot.send_message(
+            sent = await self._bot.send_message(
                 chat_id=snap.user_id,
                 text=to_telegram_html(text),
                 parse_mode=ParseMode.HTML,
                 reply_markup=markup,
             )
-            return True
+            return True, sent.message_id
         except TelegramBadRequest as e:
             # Разметку Telegram не принял — тот же ответ простым текстом лучше, чем никакого.
             log.warning("ИИ: HTML ответа отклонён (%s), отправляем простым текстом", e)
             try:
-                await self._bot.send_message(
+                sent = await self._bot.send_message(
                     chat_id=snap.user_id,
                     text=to_plain_text(text),
                     parse_mode=None,
                     reply_markup=markup,
                 )
-                return True
+                return True, sent.message_id
             except Exception as e2:
                 log.warning("ИИ: ответ клиенту %s не доставлен: %s", snap.user_id, e2)
-                return False
+                return False, None
         except Exception as e:
             log.warning("ИИ: ответ клиенту %s не доставлен: %s", snap.user_id, e)
-            return False
+            return False, None
 
     async def send_to_client(
         self,
@@ -375,7 +380,9 @@ class AiService:
             )
             topic_message_id = copy.message_id if copy else None
 
-        delivered = await self._to_client(snap, text, message_id=topic_message_id, with_button=True)
+        delivered, dm_message_id = await self._to_client(
+            snap, text, message_id=topic_message_id, with_button=True
+        )
         if not delivered:
             await self._topic_send(snap, tr("ai", "topic_delivery_failed_html"))
             return False
@@ -392,6 +399,16 @@ class AiService:
                     telegram_message_id=topic_message_id,
                     raw_note=AI_NOTE,
                 )
+                # Реакция клиента на ответ ИИ появится на его копии в теме —
+                # так же, как реакции на ответы сотрудников.
+                if dm_message_id is not None and topic_message_id is not None:
+                    await reaction_bridge_svc.save_dm_staff_mapping(
+                        session,
+                        user_id=snap.user_id,
+                        dm_message_id=dm_message_id,
+                        forum_chat_id=snap.forum_chat_id,
+                        staff_message_id=topic_message_id,
+                    )
         return True
 
     # ── Черновики (AI_MODE=draft) ───────────────────────────────────────

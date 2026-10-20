@@ -13,6 +13,7 @@ os.environ.setdefault("TEXTS_DIR", os.path.join(os.path.dirname(__file__), "..",
 from app.config import AiSettings, RemnawaveSettings, Settings  # noqa: E402
 from app.db.models import AiDraft, MessageSource, StoredMessage, Ticket  # noqa: E402
 from app.db.session import create_engine, init_db, session_factory  # noqa: E402
+from app.services import reaction_bridge as reaction_bridge_svc  # noqa: E402
 from app.services import tickets as ticket_svc  # noqa: E402
 from app.services.ai.knowledge import KnowledgeLoader  # noqa: E402
 from app.services.ai.prompt import AI_NOTE, Turn, build_turns  # noqa: E402
@@ -128,7 +129,7 @@ class FakeBot:
 
     async def send_message(self, chat_id, text, **kw):
         self._next_id += 1
-        self.sent.append({"chat_id": chat_id, "text": text, **kw})
+        self.sent.append({"chat_id": chat_id, "text": text, "message_id": self._next_id, **kw})
         return SimpleNamespace(message_id=self._next_id)
 
     async def send_chat_action(self, chat_id, action):
@@ -229,6 +230,25 @@ def test_auto_reply_debounced_and_recorded(tmp_path) -> None:
         async with sf() as session:
             rows = (await session.execute(StoredMessage.__table__.select())).fetchall()
         assert [r.raw_note for r in rows if r.direction == "out"] == [AI_NOTE]
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_client_reaction_on_ai_reply_reaches_topic(tmp_path) -> None:
+    async def scenario():
+        svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ответ"))
+        await _client_says(sf, tid, "вопрос")
+        svc.schedule(tid)
+        await _wait(svc)
+
+        topic_copy = next(m for m in bot.sent if m["chat_id"] == GROUP_ID)
+        dm = next(m for m in bot.sent if m["chat_id"] == CLIENT_ID)
+        async with sf() as session:
+            resolved = await reaction_bridge_svc.resolve_staff_message(
+                session, user_id=CLIENT_ID, dm_message_id=dm["message_id"]
+            )
+        assert resolved == (GROUP_ID, topic_copy["message_id"])
         await engine.dispose()
 
     asyncio.run(scenario())
