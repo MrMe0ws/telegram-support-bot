@@ -19,6 +19,8 @@ RELEASE_NOTES_v1.0.md
 .env.local
 .env.*.local
 !.env.example
+# Секреты tools/release.py (образец — .env.release.sample)
+.env.release
 data/
 *.sqlite3
 *.db

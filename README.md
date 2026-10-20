@@ -307,11 +307,14 @@ app/
   i18n.py              # загрузка texts/<locale>/*.yml, функция tr()
   states.py            # FSM-состояния (админка, сценарий обращения)
   db/                  # модели SQLAlchemy, сессия
-  handlers/            # роутеры aiogram: private_chat, admin_panel, group_topics, help_callbacks, message_reactions
+  handlers/            # роутеры aiogram: private_chat, admin_panel, group_topics, help_callbacks, message_reactions, ai_callbacks
   http/                # aiohttp sidecar: POST /internal/cabinet/message (bridge к shop)
   keyboards/           # инлайн-клавиатуры (тексты из YAML)
-  services/            # тикеты, «Помощь», реакции, cabinet_bridge, shop_webhook, remnawave_client, remnawave_profile
+  services/            # тикеты, «Помощь», реакции, cabinet_bridge, shop_webhook, remnawave_client, remnawave_profile, topic_status
+  services/ai/         # ИИ-ответы: база знаний, промпт, Gemini, вложения, очередь ответов
+knowledge/             # база знаний ИИ (*.md)
 texts/ru/              # тексты интерфейса (*.yml)
+tools/release.py       # релиз: GitHub Release + пост в Telegram из RELEASE_NOTES.md (только для разработки, в образ не входит)
 docker-compose.yml
 Dockerfile
 requirements.txt
