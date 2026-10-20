@@ -121,7 +121,7 @@ def _ai_from_env() -> AiSettings:
         # Telegram отдаёт ботам файлы не больше 20 МБ.
         media_max_mb=_env_int("AI_MEDIA_MAX_MB", 10, 1, 20),
         human_button_from=_env_int("AI_HUMAN_BUTTON_FROM", 1, 0, 1000),
-        fallback_model=os.environ.get("AI_FALLBACK_MODEL", "gemini-2.5-flash-lite").strip(),
+        fallback_model=os.environ.get("AI_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip(),
     )
 
 

@@ -144,13 +144,15 @@ def is_collapsible(section: Section) -> bool:
     )
 
 
-def format_telegram_html(notes: ReleaseNotes, footer: Footer) -> str:
+def format_telegram_html(notes: ReleaseNotes, footer: Footer, title: str = "") -> str:
     """
-    HTML для Bot API (parse_mode=HTML): версия — ссылка на релиз, заголовки
-    жирные, пустая строка между пунктами, две — между секциями. Длинные
-    второстепенные секции — в <blockquote expandable>.
+    HTML для Bot API (parse_mode=HTML): над версией — жирный заголовок поста
+    (чей это релиз: в ту же тему пишут и другие проекты), версия — ссылка на
+    релиз, заголовки секций жирные, пустая строка между пунктами, две — между
+    секциями. Длинные второстепенные секции — в <blockquote expandable>.
     """
-    out = [f'<a href="{escape(notes.release_url)}">{escape(notes.version)}</a>']
+    out = [f"<b>{escape(title.strip(), quote=False)}</b>\n"] if title.strip() else []
+    out.append(f'<a href="{escape(notes.release_url)}">{escape(notes.version)}</a>')
     for i, sec in enumerate(notes.sections):
         out.append("\n\n" if i == 0 else "\n\n\n")
         out.append(f"<b>{escape(sec.header, quote=False)}</b>")
@@ -314,7 +316,7 @@ def main(argv: list[str]) -> int:
     try:
         notes = parse_release_notes(notes_path.read_text(encoding="utf-8"))
         repo = _env("RELEASE_GITHUB_REPO")
-        html = format_telegram_html(notes, load_footer())
+        html = format_telegram_html(notes, load_footer(), _env("RELEASE_TG_TITLE"))
 
         if cmd == "preview":
             print(f"version: {notes.version}")

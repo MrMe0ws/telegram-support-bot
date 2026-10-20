@@ -137,3 +137,12 @@ def test_load_env_file_does_not_override(tmp_path, monkeypatch) -> None:
 
     assert os.environ["RELEASE_TG_CHAT_ID"] == "@chat"
     assert os.environ["RELEASE_GITHUB_REPO"] == "keep/me"
+
+
+def test_title_above_version() -> None:
+    html = format_telegram_html(parse_release_notes(SAMPLE), Footer(), title="🛟 Релиз Telegram Support Bot")
+    assert html.startswith(
+        '<b>🛟 Релиз Telegram Support Bot</b>\n<a href="https://github.com/MrMe0ws/telegram-support-bot/releases/tag/2.1.0">2.1.0</a>\n\n<b>🚀 Новое</b>'
+    )
+    # Без заголовка пост начинается с версии, как раньше.
+    assert format_telegram_html(parse_release_notes(SAMPLE), Footer()).startswith("<a href=")

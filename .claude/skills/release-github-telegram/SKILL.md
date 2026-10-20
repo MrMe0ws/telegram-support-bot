@@ -19,7 +19,7 @@ description: >-
 По `git log`, диффу и контексту чата готовишь **два варианта** одного релиза:
 
 1. **GitHub** — **GitHub Flavored Markdown** (поле *Release notes* на GitHub: `##`, списки, `**жирный**`, ссылки `[текст](url)`).
-2. **Telegram** — в `RELEASE_NOTES.md` хранится **plain-исходник** (без HTML/Markdown-разметки). При публикации `tools/release.py` сам собирает HTML: версия — кликабельная ссылка на GitHub Release, заголовки секций — `<b>`, в конце — кликабельный футер из `.env.release`.
+2. **Telegram** — в `RELEASE_NOTES.md` хранится **plain-исходник** (без HTML/Markdown-разметки). При публикации `tools/release.py` сам собирает HTML: сверху жирный заголовок поста `RELEASE_TG_TITLE` («🛟 Релиз Telegram Support Bot» — в ту же тему 31 пишет и магазин, по нему видно, чей релиз), под ним версия — кликабельная ссылка на GitHub Release, заголовки секций — `<b>`, в конце — кликабельный футер из `.env.release`.
 
 Смысл обоих вариантов совпадает; **не смешивай** GFM и «телеграм-исходник» в одном блоке.
 
@@ -99,7 +99,7 @@ description: >-
 
 `tools/release.py` при сборке HTML **сам** выставляет эти отступы, даже если в файле их забыли.
 
-**Не** добавляй в файл футер — его дописывает `tools/release.py` из `.env.release`.
+**Не** добавляй в файл ни заголовок поста, ни футер — их дописывает `tools/release.py` из `.env.release` (`RELEASE_TG_TITLE`, `RELEASE_TG_FOOTER_*`).
 
 Порядок секций тот же, что в GitHub. Пустые секции не выводи.
 
@@ -205,7 +205,9 @@ git log --oneline <последний_тег>..HEAD
    3. Публикация: `python tools/release.py publish` (или по отдельности `github` / `telegram`). Если Telegram упал (лимит, сеть) — поправь и повтори только `telegram`: GitHub Release уже создан, повторный `github` упадёт.
    4. Верни в чат URL GitHub Release и факт отправки в тему.
 
-Конфиг: локальный **`.env.release`** (образец — `.env.release.sample`, файл в `.gitignore`). Токен announce-бота — только там, **никогда** в git и не в чат.
+Конфиг: локальный **`.env.release`** (образец — `.env.release.sample`, файл в `.gitignore`). Анонсы идут в ту же тему, что и у магазина (`RELEASE_TG_MESSAGE_THREAD_ID=31`), тем же announce-ботом. Токен announce-бота — только там, **никогда** в git и не в чат.
+
+На новой машине: `git clone`, `cp .env.release.sample .env.release`, вписать `RELEASE_TG_BOT_TOKEN`, `gh auth login` — и всё работает.
 
 `RELEASE_TG_PROXY_URL` — только `http://` прокси (стандартная библиотека не умеет SOCKS; у Clash/FlClash HTTP на порту mixed, обычно `http://127.0.0.1:7890`). Если прокси не поднят, CLI повторит отправку напрямую — только когда запрос заведомо не ушёл, чтобы не задвоить анонс.
 
