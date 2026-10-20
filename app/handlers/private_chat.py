@@ -126,20 +126,19 @@ def _content_summary(message: Message) -> tuple[str, str | None, str | None]:
     """content_type, text, file_id for storage."""
     if message.text:
         return "text", message.text, None
-    if message.caption:
-        base = message.content_type if message.content_type != "text" else "unknown"
-        return base, message.caption, None
+    # Подпись к медиа — текст сообщения, но и сам файл нужен: ИИ его смотрит.
+    caption = message.caption
     if message.photo:
         fid = message.photo[-1].file_id
-        return "photo", None, fid
+        return "photo", caption, fid
     if message.document:
-        return "document", message.document.file_name or "", message.document.file_id
+        return "document", caption or message.document.file_name or "", message.document.file_id
     if message.video:
-        return "video", message.video.file_name or "", message.video.file_id
+        return "video", caption or message.video.file_name or "", message.video.file_id
     if message.audio:
-        return "audio", message.audio.title or "", message.audio.file_id
+        return "audio", caption or message.audio.title or "", message.audio.file_id
     if message.voice:
-        return "voice", None, message.voice.file_id
+        return "voice", caption, message.voice.file_id
     if message.video_note:
         return "video_note", None, message.video_note.file_id
     if message.sticker:
@@ -147,7 +146,7 @@ def _content_summary(message: Message) -> tuple[str, str | None, str | None]:
     if message.contact:
         c = message.contact
         return "contact", f"{c.first_name or ''} {c.phone_number or ''}".strip(), None
-    return message.content_type or "unknown", None, None
+    return message.content_type or "unknown", caption, None
 
 
 @router.message(CommandStart())

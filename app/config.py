@@ -68,6 +68,10 @@ class AiSettings:
     max_replies_per_ticket: int
     timeout_sec: float
     assistant_name: str
+    # Показывать модели фото, голосовые и файлы клиента (только Telegram-тикеты).
+    media_enabled: bool = True
+    # Файлы больше этого размера модели не отправляются — тикет уходит человеку.
+    media_max_mb: int = 10
 
     @property
     def is_active(self) -> bool:
@@ -107,6 +111,9 @@ def _ai_from_env() -> AiSettings:
         max_replies_per_ticket=_env_int("AI_MAX_REPLIES_PER_TICKET", 15, 1, 1000),
         timeout_sec=_env_float("AI_TIMEOUT_SEC", 60.0, 5.0, 300.0),
         assistant_name=os.environ.get("AI_ASSISTANT_NAME", "ИИ-помощник").strip() or "ИИ-помощник",
+        media_enabled=_env_bool("AI_MEDIA", True),
+        # Telegram отдаёт ботам файлы не больше 20 МБ.
+        media_max_mb=_env_int("AI_MEDIA_MAX_MB", 10, 1, 20),
     )
 
 

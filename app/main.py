@@ -73,11 +73,12 @@ def _setup_ai(bot: Bot, sf, settings: Settings) -> None:
     # WARNING, а не INFO: уровень логов по умолчанию WARNING, а включённый ИИ
     # админ должен видеть при каждом старте.
     log.warning(
-        "ИИ включён: %s / %s, режим %s, пауза %.0f с",
+        "ИИ включён: %s / %s, режим %s, пауза %.0f с, вложения %s",
         ai.provider,
         ai.model,
         ai.mode,
         ai.reply_delay_sec,
+        f"до {ai.media_max_mb} МБ" if ai.media_enabled else "выкл",
     )
 
 

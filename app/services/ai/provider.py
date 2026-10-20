@@ -85,7 +85,11 @@ class GeminiProvider:
     def _contents(self, turns: list[Turn]) -> list:
         t = self._types
         return [
-            t.Content(role="model" if turn.role == "assistant" else "user", parts=[t.Part(text=turn.text)])
+            t.Content(
+                role="model" if turn.role == "assistant" else "user",
+                parts=[t.Part(text=turn.text)]
+                + [t.Part.from_bytes(data=m.data, mime_type=m.mime_type) for m in turn.media],
+            )
             for turn in turns
         ]
 

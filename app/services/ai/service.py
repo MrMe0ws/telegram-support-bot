@@ -21,6 +21,7 @@ from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
 from app.services.ai.knowledge import KnowledgeLoader
 from app.services.ai.formatting import to_plain_text, to_telegram_html
+from app.services.ai.media import MEDIA_CONTENT_TYPES, Media, media_mime
 from app.services.ai.prompt import AI_NOTE, build_turns, client_card, system_prompt
 from app.services.ai.provider import AiError, AiProvider, AiRateLimited, AiReply
 from app.services.remnawave_client import RemnawaveClient
@@ -29,6 +30,11 @@ log = logging.getLogger(__name__)
 
 # Telegram держит «печатает…» около 5 секунд — обновляем чуть чаще.
 _TYPING_EVERY_SEC = 4.5
+
+# Модели уходят вложения только из последних сообщений клиента: старые она уже
+# разобрала в своих ответах. Общий объём держим ниже лимита запроса Gemini (20 МБ).
+_MAX_MEDIA_FILES = 4
+_MAX_MEDIA_TOTAL_BYTES = 15 * 1024 * 1024
 
 CB_CALL_HUMAN = "aih:"
 CB_DRAFT_SEND = "aid:s:"
@@ -180,12 +186,14 @@ class AiService:
             if self.mode == "auto" and snap.is_telegram:
                 self._typing_tasks[ticket_id] = asyncio.create_task(self._typing(snap.user_id))
 
+            # Скачанные вложения по file_id: при повторном круге не качаем заново.
+            media_cache: dict[str, Media | None] = {}
             while True:
                 answered_deadline = await self._wait_quiet(ticket_id)
                 if answered_deadline is None:
                     return
                 seen = answered_deadline
-                prepared = await self._prepare(ticket_id)
+                prepared = await self._prepare(ticket_id, media_cache)
                 if prepared is None:
                     return
                 snap, turns, ai_replies = prepared
@@ -229,7 +237,7 @@ class AiService:
                 return None
             return _snapshot(t)
 
-    async def _prepare(self, ticket_id: int):
+    async def _prepare(self, ticket_id: int, media_cache: dict[str, Media | None]):
         async with self._sf() as session:
             t = await ticket_svc.get_ticket_by_id(session, ticket_id)
             if t is None or t.status != TicketStatus.open.value or t.ai_paused:
@@ -262,7 +270,51 @@ class AiService:
             tz_name=self._settings.remnawave.timezone,
             now=datetime.now(timezone.utc),
         )
-        return snap, build_turns(card, messages), ai_replies
+        media = await self._collect_media(snap, messages, media_cache)
+        return snap, build_turns(card, messages, media), ai_replies
+
+    async def _collect_media(
+        self, snap: _TicketSnapshot, messages: list, cache: dict[str, Media | None]
+    ) -> dict[int, Media]:
+        """Вложения последних сообщений клиента, которые модель увидит сама (по id сообщения)."""
+        if not self._ai.media_enabled or not snap.is_telegram:
+            return {}
+        candidates = [
+            m
+            for m in reversed(messages)
+            if m.direction == "in" and m.content_type in MEDIA_CONTENT_TYPES and m.telegram_file_id
+        ][:_MAX_MEDIA_FILES]
+        result: dict[int, Media] = {}
+        total = 0
+        for msg in candidates:
+            fid = msg.telegram_file_id
+            if fid not in cache:
+                cache[fid] = await self._download(msg.content_type, fid)
+            media = cache[fid]
+            if media is None or total + len(media.data) > _MAX_MEDIA_TOTAL_BYTES:
+                continue
+            total += len(media.data)
+            result[msg.id] = media
+        return result
+
+    async def _download(self, content_type: str, file_id: str) -> Media | None:
+        max_bytes = self._ai.media_max_mb * 1024 * 1024
+        try:
+            f = await self._bot.get_file(file_id)
+            if f.file_size and f.file_size > max_bytes:
+                log.info("ИИ: вложение %s больше %s МБ — модели не отправляем", content_type, self._ai.media_max_mb)
+                return None
+            mime = media_mime(content_type, f.file_path)
+            if mime is None or not f.file_path:
+                return None
+            buf = await self._bot.download_file(f.file_path)
+            data = buf.read() if buf is not None else b""
+        except Exception as e:
+            log.warning("ИИ: вложение %s не скачано: %s", content_type, e)
+            return None
+        if not data or len(data) > max_bytes:
+            return None
+        return Media(mime_type=mime, data=data)
 
     async def _remnawave_user(self, snap: _TicketSnapshot):
         rw = self._settings.remnawave

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 from dataclasses import replace
 from types import SimpleNamespace
@@ -71,7 +72,7 @@ def test_build_turns_merges_roles_and_marks_staff() -> None:
     assert "Перезапустите приложение" in turns[1].text
     assert "[Поддержка] Проверил — всё ок" in turns[1].text
     assert "[Поддержка] Перезапустите" not in turns[1].text
-    assert turns[2].text == "[клиент прислал фото]"
+    assert turns[2].text == "[клиент прислал фото — вложение недоступно]"
 
 
 # ── Разбор ответа Gemini ────────────────────────────────────────────────
@@ -137,6 +138,19 @@ class FakeBot:
 
     async def edit_message_text(self, chat_id, message_id, text, **kw):
         self.edited.append({"chat_id": chat_id, "message_id": message_id, "text": text})
+
+    # Файлы Telegram: file_id → (путь на серверах Telegram, содержимое).
+    files: dict[str, tuple[str, bytes]] = {}
+    downloads = 0
+
+    async def get_file(self, file_id):
+        path, data = self.files[file_id]
+        return SimpleNamespace(file_id=file_id, file_path=path, file_size=len(data))
+
+    async def download_file(self, file_path):
+        self.downloads += 1
+        data = next(d for p, d in self.files.values() if p == file_path)
+        return io.BytesIO(data)
 
     def to_client(self) -> list[str]:
         return [m["text"] for m in self.sent if m["chat_id"] == CLIENT_ID]
@@ -453,3 +467,118 @@ def test_table_becomes_lines() -> None:
 
     table = "| Тариф | Цена |\n|---|---|\n| 1 мес | 100 ₽ |"
     assert to_plain_text(table) == "Тариф · Цена\n1 мес · 100 ₽"
+
+
+# ── Вложения: фото, голосовые, файлы ────────────────────────────────────
+
+
+async def _client_sends(sf, ticket_id: int, content_type: str, file_id: str, text: str | None = None) -> None:
+    async with sf() as session:
+        async with session.begin():
+            await ticket_svc.record_message(
+                session, ticket_id=ticket_id, direction="in", content_type=content_type,
+                text=text, telegram_file_id=file_id, telegram_message_id=None,
+            )
+
+
+def test_photo_and_voice_reach_model(tmp_path) -> None:
+    async def scenario():
+        svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="вижу ошибку"))
+        bot.files = {
+            "ph": ("photos/file_1.jpg", b"jpeg-bytes"),
+            "vc": ("voice/file_2.oga", b"ogg-bytes"),
+            "vid": ("videos/file_3.mp4", b"mp4-bytes"),
+        }
+        await _client_sends(sf, tid, "photo", "ph", text="вот скрин")
+        await _client_sends(sf, tid, "voice", "vc")
+        await _client_sends(sf, tid, "video", "vid")
+        svc.schedule(tid)
+        await _wait(svc)
+
+        turn = provider.calls[0][-1]
+        assert [(m.mime_type, m.data) for m in turn.media] == [
+            ("image/jpeg", b"jpeg-bytes"),
+            ("audio/ogg", b"ogg-bytes"),
+        ]
+        assert "[клиент прислал фото — см. вложение] вот скрин" in turn.text
+        assert "[клиент прислал голосовое сообщение — см. вложение]" in turn.text
+        # Видео модели не отправляется — только пометка.
+        assert "[клиент прислал видео — вложение недоступно]" in turn.text
+        assert bot.to_client() == ["вижу ошибку"]
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_oversized_and_unknown_files_are_not_sent(tmp_path) -> None:
+    async def scenario():
+        svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ок"))
+        svc._ai = replace(svc._ai, media_max_mb=1)
+        bot.files = {
+            "big": ("documents/file_1.pdf", b"x" * (1024 * 1024 + 1)),
+            "zip": ("documents/file_2.zip", b"zip"),
+            "log": ("documents/file_3.log", b"error: timeout"),
+        }
+        await _client_sends(sf, tid, "document", "big", text="отчёт.pdf")
+        await _client_sends(sf, tid, "document", "zip", text="архив.zip")
+        await _client_sends(sf, tid, "document", "log", text="happ.log")
+        svc.schedule(tid)
+        await _wait(svc)
+
+        turn = provider.calls[0][-1]
+        assert [(m.mime_type, m.data) for m in turn.media] == [("text/plain", b"error: timeout")]
+        assert "файл — вложение недоступно] отчёт.pdf" in turn.text
+        assert "файл — вложение недоступно] архив.zip" in turn.text
+        assert "файл — см. вложение] happ.log" in turn.text
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_media_disabled_downloads_nothing(tmp_path) -> None:
+    async def scenario():
+        svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ок"))
+        svc._ai = replace(svc._ai, media_enabled=False)
+        bot.files = {"ph": ("photos/file_1.jpg", b"jpeg")}
+        await _client_sends(sf, tid, "photo", "ph")
+        svc.schedule(tid)
+        await _wait(svc)
+
+        assert bot.downloads == 0
+        assert provider.calls[0][-1].media == ()
+        assert "вложение недоступно" in provider.calls[0][-1].text
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_gemini_request_carries_media(tmp_path) -> None:
+    from app.services.ai.media import Media
+    from app.services.ai.provider import GeminiProvider
+
+    settings = _settings(tmp_path).ai
+    contents = GeminiProvider(settings)._contents(
+        [Turn("user", "смотри", (Media("image/png", b"png"),)), Turn("assistant", "вижу")]
+    )
+    assert [c.role for c in contents] == ["user", "model"]
+    assert contents[0].parts[0].text == "смотри"
+    assert contents[0].parts[1].inline_data.mime_type == "image/png"
+    assert contents[0].parts[1].inline_data.data == b"png"
+    assert len(contents[1].parts) == 1
+
+
+def test_photo_caption_keeps_file() -> None:
+    from app.handlers.private_chat import _content_summary
+
+    empty = dict(
+        text=None, caption=None, photo=None, document=None, video=None, audio=None,
+        voice=None, video_note=None, sticker=None, contact=None, content_type="photo",
+    )
+    photo = SimpleNamespace(**{
+        **empty,
+        "caption": "не подключается",
+        "photo": [SimpleNamespace(file_id="small"), SimpleNamespace(file_id="big")],
+    })
+    assert _content_summary(photo) == ("photo", "не подключается", "big")
+    gif = SimpleNamespace(**{**empty, "caption": "смешно", "content_type": "animation"})
+    assert _content_summary(gif) == ("animation", "смешно", None)
