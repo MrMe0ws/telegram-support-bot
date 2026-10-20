@@ -72,6 +72,9 @@ class AiSettings:
     media_enabled: bool = True
     # Файлы больше этого размера модели не отправляются — тикет уходит человеку.
     media_max_mb: int = 10
+    # С какого по счёту ответа ИИ в тикете показывать клиенту кнопку «Позвать человека»;
+    # 0 — не показывать (позвать человека клиент может и словами).
+    human_button_from: int = 1
 
     @property
     def is_active(self) -> bool:
@@ -114,6 +117,7 @@ def _ai_from_env() -> AiSettings:
         media_enabled=_env_bool("AI_MEDIA", True),
         # Telegram отдаёт ботам файлы не больше 20 МБ.
         media_max_mb=_env_int("AI_MEDIA_MAX_MB", 10, 1, 20),
+        human_button_from=_env_int("AI_HUMAN_BUTTON_FROM", 1, 0, 1000),
     )
 
 

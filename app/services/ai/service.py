@@ -72,6 +72,18 @@ def _snapshot(t: Ticket) -> _TicketSnapshot:
     )
 
 
+async def _count_ai_replies(session, ticket_id: int) -> int:
+    return (
+        await session.execute(
+            select(func.count(StoredMessage.id)).where(
+                StoredMessage.ticket_id == ticket_id,
+                StoredMessage.direction == "out",
+                StoredMessage.raw_note == AI_NOTE,
+            )
+        )
+    ).scalar_one()
+
+
 def kb_call_human(ticket_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -255,15 +267,7 @@ class AiService:
             # Последним ответил человек — значит, отвечать уже не нам.
             if not messages or messages[-1].direction != "in":
                 return None
-            ai_replies = (
-                await session.execute(
-                    select(func.count(StoredMessage.id)).where(
-                        StoredMessage.ticket_id == ticket_id,
-                        StoredMessage.direction == "out",
-                        StoredMessage.raw_note == AI_NOTE,
-                    )
-                )
-            ).scalar_one()
+            ai_replies = await _count_ai_replies(session, ticket_id)
 
         card = client_card(
             await self._remnawave_user(snap),
@@ -424,6 +428,11 @@ class AiService:
             if t is None or t.status != TicketStatus.open.value:
                 return False
             snap = _snapshot(t)
+            # Номер этого ответа ИИ в тикете: кнопка «Позвать человека» — не с первого,
+            # если так задано в AI_HUMAN_BUTTON_FROM.
+            reply_no = await _count_ai_replies(session, ticket_id) + 1
+        button_from = self._ai.human_button_from
+        with_button = button_from > 0 and reply_no >= button_from
 
         if post_topic_copy:
             copy = await self._topic_send(
@@ -433,7 +442,7 @@ class AiService:
             topic_message_id = copy.message_id if copy else None
 
         delivered, dm_message_id = await self._to_client(
-            snap, text, message_id=topic_message_id, with_button=True
+            snap, text, message_id=topic_message_id, with_button=with_button
         )
         if not delivered:
             await self._topic_send(snap, tr("ai", "topic_delivery_failed_html"))

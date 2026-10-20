@@ -582,3 +582,31 @@ def test_photo_caption_keeps_file() -> None:
     assert _content_summary(photo) == ("photo", "не подключается", "big")
     gif = SimpleNamespace(**{**empty, "caption": "смешно", "content_type": "animation"})
     assert _content_summary(gif) == ("animation", "смешно", None)
+
+
+# ── Кнопка «Позвать человека» ───────────────────────────────────────────
+
+
+async def _two_ai_replies(tmp_path, button_from: int) -> list:
+    svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ответ"))
+    svc._ai = replace(svc._ai, human_button_from=button_from)
+    for question in ("первый вопрос", "второй вопрос"):
+        await _client_says(sf, tid, question)
+        svc.schedule(tid)
+        await _wait(svc)
+    await engine.dispose()
+    return [m.get("reply_markup") for m in bot.sent if m["chat_id"] == CLIENT_ID]
+
+
+def test_human_button_from_second_reply(tmp_path) -> None:
+    first, second = asyncio.run(_two_ai_replies(tmp_path, 2))
+    assert first is None and second is not None
+
+
+def test_human_button_disabled(tmp_path) -> None:
+    assert asyncio.run(_two_ai_replies(tmp_path, 0)) == [None, None]
+
+
+def test_human_button_default_from_first_reply(tmp_path) -> None:
+    first, second = asyncio.run(_two_ai_replies(tmp_path, 1))
+    assert first is not None and second is not None
