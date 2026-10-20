@@ -9,6 +9,7 @@ from app.db.models import MessageSource, TicketStatus
 from app.i18n import tr
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
+from app.services.ai.service import get_ai_service
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,10 @@ async def close_ticket_by_id(
             ticket_source = ticket.source
             external_uid = ticket.external_uid
             await ticket_svc.close_ticket(session, ticket.id)
+
+    ai = get_ai_service()
+    if ai is not None:
+        ai.cancel(ticket_id)
 
     if notify_thread_text and forum_chat_id is not None and thread_id is not None:
         try:

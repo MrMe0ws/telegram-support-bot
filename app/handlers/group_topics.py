@@ -13,6 +13,7 @@ from app.i18n import tr
 from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
+from app.services.ai.service import get_ai_service
 from app.services.remnawave_client import RemnawaveApiError, RemnawaveClient
 from app.services.remnawave_profile import format_remnawave_profile_block
 from app.services.ticket_flow import close_ticket_by_id
@@ -29,7 +30,7 @@ def _is_staff_command(text: str | None) -> bool:
     if not head.startswith("/"):
         return False
     cmd = head.split("@", 1)[0]
-    return cmd in ("/profile", "/close")
+    return cmd in ("/profile", "/close", "/ai")
 
 
 async def _cabinet_profile_line_user(bot: Bot, ticket) -> str:
@@ -239,6 +240,46 @@ async def profile_in_topic(
 @router.message(
     F.chat.type.in_({"supergroup", "group"}),
     F.message_thread_id.as_("tid"),
+    Command("ai"),
+)
+async def ai_in_topic(
+    message: Message,
+    tid: int,
+    session_factory,
+    settings,
+):
+    """/ai on | /ai off | /ai — включить, выключить ИИ в этом тикете или узнать, отвечает ли он."""
+    if message.chat.id != settings.support_group_id:
+        return
+    if message.from_user.id not in settings.admin_ids:
+        await message.reply(tr("ai", "cmd_admin_only"))
+        return
+    ai = get_ai_service()
+    if ai is None:
+        await message.reply(tr("ai", "cmd_disabled"))
+        return
+
+    async with session_factory() as session:
+        ticket = await ticket_svc.get_ticket_by_thread(session, message.chat.id, tid)
+    if ticket is None:
+        await message.reply(tr("group", "no_open_ticket_in_thread"))
+        return
+
+    parts = (message.text or "").split()
+    arg = parts[1].lower() if len(parts) > 1 else ""
+    if arg == "on":
+        await ai.set_enabled_in_ticket(ticket.id, True)
+        await message.reply(tr("ai", "cmd_on"))
+    elif arg == "off":
+        await ai.set_enabled_in_ticket(ticket.id, False)
+        await message.reply(tr("ai", "cmd_off"))
+    else:
+        await message.reply(tr("ai", "cmd_status_off" if ticket.ai_paused else "cmd_status_on"))
+
+
+@router.message(
+    F.chat.type.in_({"supergroup", "group"}),
+    F.message_thread_id.as_("tid"),
 )
 async def staff_reply(
     message: Message,
@@ -258,6 +299,8 @@ async def staff_reply(
     if _is_staff_command(text_raw):
         return
 
+    replied_ticket_id: int | None = None
+    sent_to_cabinet = False
     async with session_factory() as session:
         async with session.begin():
             ticket = await ticket_svc.get_ticket_by_thread(session, message.chat.id, tid)
@@ -270,6 +313,7 @@ async def staff_reply(
                 return
 
             client_uid = ticket.user_id
+            replied_ticket_id = ticket.id
 
             ct = message.content_type or "unknown"
             text = message.text or message.caption
@@ -309,7 +353,15 @@ async def staff_reply(
                     author_label="Поддержка",
                     support_bot_message_id=message.message_id,
                 )
-                return
+                sent_to_cabinet = True
+
+    # Сотрудник ответил сам: в режиме auto ИИ в этом тикете замолкает, чтобы не
+    # говорить поверх человека (вернуть — /ai on); в draft снимается черновик.
+    ai = get_ai_service()
+    if ai is not None and replied_ticket_id is not None:
+        await ai.pause_by_staff(replied_ticket_id)
+    if sent_to_cabinet:
+        return
 
     try:
         copied = await bot.copy_message(

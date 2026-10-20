@@ -12,6 +12,7 @@ from app.db.models import MessageSource
 from app.handlers.private_chat import _create_forum_topic_open, _rename_topic_if_needed
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
+from app.services.ai.service import get_ai_service
 
 log = logging.getLogger(__name__)
 
@@ -172,6 +173,10 @@ async def post_cabinet_message(
                 ticket_id,
                 sent.message_id,
             )
+
+    ai = get_ai_service()
+    if ai is not None:
+        ai.schedule(ticket_id)
 
     return {
         "support_bot_ticket_id": ticket_id,

@@ -13,12 +13,16 @@ from app.config import Settings
 from app.db.session import create_engine, init_db, session_factory
 from app.handlers import (
     admin_panel,
+    ai_callbacks,
     group_topics,
     help_callbacks,
     message_reactions,
     private_chat,
 )
 from app.i18n import texts_bundle
+from app.services.ai.knowledge import KnowledgeLoader
+from app.services.ai.provider import create_provider
+from app.services.ai.service import AiService, set_ai_service
 from app.services.help_links import seed_help_links_if_empty
 from app.services.remnawave_client import log_remnawave_connectivity
 
@@ -51,6 +55,32 @@ _configure_logging()
 log = logging.getLogger(__name__)
 
 
+def _setup_ai(bot: Bot, sf, settings: Settings) -> None:
+    ai = settings.ai
+    if not ai.enabled:
+        return
+    if not ai.is_active:
+        log.warning("AI_ENABLED=true, но не задан AI_API_KEY или AI_MODEL — ИИ выключен")
+        return
+    try:
+        provider = create_provider(ai)
+    except Exception as e:
+        log.error("ИИ не запущен: %s", e)
+        return
+    knowledge = KnowledgeLoader(ai.knowledge_dir)
+    knowledge.load()
+    set_ai_service(AiService(bot, sf, settings, provider, knowledge))
+    # WARNING, а не INFO: уровень логов по умолчанию WARNING, а включённый ИИ
+    # админ должен видеть при каждом старте.
+    log.warning(
+        "ИИ включён: %s / %s, режим %s, пауза %.0f с",
+        ai.provider,
+        ai.model,
+        ai.mode,
+        ai.reply_delay_sec,
+    )
+
+
 async def main() -> None:
     texts_bundle()
     settings = Settings.from_env()
@@ -70,10 +100,12 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
     dp["settings"] = settings
     dp["session_factory"] = sf
+    _setup_ai(bot, sf, settings)
 
     dp.include_router(admin_panel.router)
     dp.include_router(private_chat.router)
     dp.include_router(help_callbacks.router)
+    dp.include_router(ai_callbacks.router)
     dp.include_router(message_reactions.router)
     dp.include_router(group_topics.router)
 

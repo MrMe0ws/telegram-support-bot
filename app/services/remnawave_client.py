@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -354,7 +355,13 @@ class RemnawaveClient:
         if not candidates:
             return None
 
-        payload = candidates[0]
+        # У одного Telegram ID бывает несколько профилей (ручной «test_…» и т. п.).
+        # Профиль магазина называется «<customer_id>_<telegram_id>» — он основной.
+        shop_name = re.compile(rf"^\d+_{telegram_id}$")
+        payload = next(
+            (u for u in candidates if shop_name.match(str(u.get("username") or ""))),
+            candidates[0],
+        )
         user = parse_remnawave_user(
             payload,
             sub_public_url=self._settings.sub_public_url,

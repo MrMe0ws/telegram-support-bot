@@ -92,3 +92,64 @@ def test_format_remnawave_profile_contains_key_fields() -> None:
     assert "Default-Squad" in html
     assert "PdYb6LonHb3129VK" in html
     assert "Доп. слоты HWID" not in html
+
+
+def _rw_settings() -> RemnawaveSettings:
+    return RemnawaveSettings(
+        enabled=True, base_url="http://rw:3000", mode="local", token="t", sub_public_url="",
+        gate_query_name="", gate_query_value="", gate_cookie="", timeout_sec=5,
+        timezone="UTC", http_host="", proxy_headers=False, forwarded_for="", forwarded_proto="",
+    )
+
+
+def test_fetch_by_telegram_id_prefers_shop_profile() -> None:
+    """Несколько профилей на один Telegram ID — берём профиль магазина «<customer_id>_<tg_id>»."""
+    import asyncio
+
+    from app.services.remnawave_client import RemnawaveClient
+
+    client = RemnawaveClient(_rw_settings())
+    calls: list[str] = []
+
+    async def fake_request(url: str):
+        calls.append(url)
+        return 200, {
+            "response": {
+                "users": [
+                    # Чужой профиль: панель могла бы проигнорировать фильтр.
+                    {"username": "1_111", "telegramId": 111, "status": "ACTIVE"},
+                    {"username": "test_8440429610", "telegramId": 8440429610, "status": "DISABLED"},
+                    {
+                        "username": "1853_8440429610",
+                        "telegramId": 8440429610,
+                        "status": "ACTIVE",
+                        "expireAt": "2026-10-21T16:42:00.000Z",
+                        "hwidDeviceLimit": 1,
+                        "tag": "TRIAL_TAG",
+                    },
+                ],
+                "hasMore": False,
+            }
+        }
+
+    client._request_json = fake_request  # type: ignore[method-assign]
+    user = asyncio.run(client.fetch_user_by_telegram_id(8440429610))
+
+    assert user is not None
+    assert user.username == "1853_8440429610"
+    assert user.status == "ACTIVE"
+    assert any("/api/users/stream?" in u and "telegramId=8440429610" in u for u in calls)
+
+
+def test_fetch_by_telegram_id_stream_ignores_foreign_users() -> None:
+    import asyncio
+
+    from app.services.remnawave_client import RemnawaveClient
+
+    client = RemnawaveClient(_rw_settings())
+
+    async def fake_request(url: str):
+        return 200, {"response": {"users": [{"username": "1_111", "telegramId": 111, "status": "ACTIVE"}]}}
+
+    client._request_json = fake_request  # type: ignore[method-assign]
+    assert asyncio.run(client.fetch_user_by_telegram_id(8440429610)) is None

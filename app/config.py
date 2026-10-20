@@ -44,6 +44,72 @@ class RemnawaveSettings:
         return self.enabled and bool(self.token) and bool(self.base_url)
 
 
+AI_MODES = ("auto", "draft")
+
+
+@dataclass(frozen=True)
+class AiSettings:
+    """ИИ-ответы клиентам. Всё — из .env, без переключателей в боте."""
+
+    enabled: bool
+    # auto — ИИ отвечает клиенту сам; draft — готовит черновик в тему, отправляет админ.
+    mode: str
+    provider: str
+    api_key: str
+    model: str
+    # Прокси до API провайдера (из РФ Gemini напрямую недоступен), напр. http://user:pass@host:port.
+    proxy_url: str
+    # Сколько ждать тишины после сообщения клиента, прежде чем отвечать: клиент часто
+    # пишет несколькими сообщениями подряд.
+    reply_delay_sec: float
+    knowledge_dir: str
+    history_limit: int
+    # Сколько раз ИИ может ответить в одном тикете, прежде чем передать его человеку.
+    max_replies_per_ticket: int
+    timeout_sec: float
+    assistant_name: str
+
+    @property
+    def is_active(self) -> bool:
+        return self.enabled and bool(self.api_key) and bool(self.model)
+
+
+def _env_int(key: str, default: int, lo: int, hi: int) -> int:
+    try:
+        v = int(os.environ.get(key, "") or default)
+    except ValueError:
+        v = default
+    return max(lo, min(hi, v))
+
+
+def _env_float(key: str, default: float, lo: float, hi: float) -> float:
+    try:
+        v = float(os.environ.get(key, "") or default)
+    except ValueError:
+        v = default
+    return max(lo, min(hi, v))
+
+
+def _ai_from_env() -> AiSettings:
+    mode = os.environ.get("AI_MODE", "auto").strip().lower()
+    if mode not in AI_MODES:
+        mode = "auto"
+    return AiSettings(
+        enabled=_env_bool("AI_ENABLED", False),
+        mode=mode,
+        provider=os.environ.get("AI_PROVIDER", "gemini").strip().lower() or "gemini",
+        api_key=os.environ.get("AI_API_KEY", "").strip(),
+        model=os.environ.get("AI_MODEL", "gemini-2.5-flash").strip(),
+        proxy_url=os.environ.get("AI_PROXY_URL", "").strip(),
+        reply_delay_sec=_env_float("AI_REPLY_DELAY_SEC", 20.0, 0.0, 120.0),
+        knowledge_dir=os.environ.get("AI_KNOWLEDGE_DIR", "knowledge").strip() or "knowledge",
+        history_limit=_env_int("AI_HISTORY_LIMIT", 30, 2, 200),
+        max_replies_per_ticket=_env_int("AI_MAX_REPLIES_PER_TICKET", 15, 1, 1000),
+        timeout_sec=_env_float("AI_TIMEOUT_SEC", 60.0, 5.0, 300.0),
+        assistant_name=os.environ.get("AI_ASSISTANT_NAME", "ИИ-помощник").strip() or "ИИ-помощник",
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
     bot_token: str
@@ -58,6 +124,7 @@ class Settings:
     support_bridge_secret: str
     http_port: int
     remnawave: RemnawaveSettings
+    ai: AiSettings
 
     @staticmethod
     def from_env() -> "Settings":
@@ -130,4 +197,5 @@ class Settings:
             support_bridge_secret=os.environ.get("SUPPORT_BRIDGE_SECRET", "").strip(),
             http_port=int(os.environ.get("HTTP_PORT", "8080") or "8080"),
             remnawave=remnawave,
+            ai=_ai_from_env(),
         )

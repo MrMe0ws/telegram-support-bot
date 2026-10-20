@@ -46,6 +46,8 @@ class Ticket(Base):
     last_forward_group_msg_id: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True
     )
+    # ИИ молчит в этом тикете: человек взял его на себя или ИИ передал его людям.
+    ai_paused: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     messages: Mapped[list["StoredMessage"]] = relationship(back_populates="ticket")
@@ -106,6 +108,26 @@ class StoredMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     ticket: Mapped["Ticket"] = relationship(back_populates="messages")
+
+
+class AiDraftStatus(enum.StrEnum):
+    pending = "pending"
+    sent = "sent"
+    rejected = "rejected"
+    stale = "stale"
+
+
+class AiDraft(Base):
+    """Черновик ответа ИИ (AI_MODE=draft): лежит в теме, пока админ не отправит или не отклонит."""
+
+    __tablename__ = "ai_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default=AiDraftStatus.pending.value)
+    topic_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class BlockedUser(Base):

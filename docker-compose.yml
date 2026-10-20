@@ -6,6 +6,8 @@ services:
       - .env
     volumes:
       - ./data:/data
+      # База знаний ИИ: .md-файлы правятся на сервере, бот подхватывает без перезапуска
+      - ./knowledge:/app/knowledge:ro
     # networks:
     #   - remnawave-network
     deploy:
