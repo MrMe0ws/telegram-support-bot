@@ -46,6 +46,10 @@ class AiRateLimited(AiError):
     """Провайдер отказал по лимиту запросов (на бесплатном тарифе — обычное дело)."""
 
 
+class AiUnavailable(AiError):
+    """Модель перегружена или у провайдера сбой (5xx) — другая модель может ответить."""
+
+
 class AiProvider(Protocol):
     async def reply(self, system: str, turns: list[Turn]) -> AiReply: ...
 
@@ -58,7 +62,10 @@ class GeminiProvider:
         from google.genai import types
 
         self._types = types
-        self._model = settings.model
+        # Основная модель, затем запасная — на случай лимита или перегрузки основной.
+        self._models = [settings.model]
+        if settings.fallback_model and settings.fallback_model != settings.model:
+            self._models.append(settings.fallback_model)
         self._timeout = settings.timeout_sec
         http_options = None
         if settings.proxy_url:
@@ -94,8 +101,6 @@ class GeminiProvider:
         ]
 
     async def reply(self, system: str, turns: list[Turn]) -> AiReply:
-        from google.genai import errors
-
         t = self._types
         config = t.GenerateContentConfig(
             system_instruction=system,
@@ -105,13 +110,25 @@ class GeminiProvider:
             automatic_function_calling=t.AutomaticFunctionCallingConfig(disable=True),
             temperature=0.3,
         )
+        contents = self._contents(turns)
+        for i, model in enumerate(self._models):
+            try:
+                resp = await self._generate(model, contents, config)
+            except (AiRateLimited, AiUnavailable) as e:
+                if i + 1 == len(self._models):
+                    raise
+                log.warning("Gemini %s не ответила (%s) — пробуем запасную %s", model, e, self._models[i + 1])
+                continue
+            self._log_usage(model, resp)
+            return parse_gemini_response(resp)
+        raise AiError("нет моделей")  # недостижимо: список моделей не пуст
+
+    async def _generate(self, model: str, contents: list, config):
+        from google.genai import errors
+
         try:
-            resp = await asyncio.wait_for(
-                self._client.aio.models.generate_content(
-                    model=self._model,
-                    contents=self._contents(turns),
-                    config=config,
-                ),
+            return await asyncio.wait_for(
+                self._client.aio.models.generate_content(model=model, contents=contents, config=config),
                 timeout=self._timeout,
             )
         except asyncio.TimeoutError as e:
@@ -119,22 +136,26 @@ class GeminiProvider:
         except errors.APIError as e:
             if e.code == 429:
                 raise AiRateLimited(e.message or "429") from e
-            raise AiError(f"{e.code} {e.status or ''} {e.message or ''}".strip()) from e
+            detail = f"{e.code} {e.status or ''} {e.message or ''}".strip()
+            if e.code and e.code >= 500:
+                raise AiUnavailable(detail) from e
+            raise AiError(detail) from e
         except (aiohttp.ClientError, httpx.HTTPError, OSError) as e:
             # SDK ходит в сеть через aiohttp или httpx — что установлено.
             raise AiError(f"нет связи с API: {e}") from e
 
+    @staticmethod
+    def _log_usage(model: str, resp) -> None:
         usage = resp.usage_metadata
         if usage is not None:
             log.info(
                 "Gemini %s: вход %s (из кэша %s), выход %s, размышления %s",
-                self._model,
+                model,
                 usage.prompt_token_count,
                 usage.cached_content_token_count,
                 usage.candidates_token_count,
                 usage.thoughts_token_count,
             )
-        return parse_gemini_response(resp)
 
 
 def parse_gemini_response(resp) -> AiReply:

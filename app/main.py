@@ -25,6 +25,7 @@ from app.services.ai.provider import create_provider
 from app.services.ai.service import AiService, set_ai_service
 from app.services.help_links import seed_help_links_if_empty
 from app.services.remnawave_client import log_remnawave_connectivity
+from app.services.topic_status import resolve_waiting_icon
 
 try:
     from app.http.server import create_app, start_http
@@ -73,9 +74,10 @@ def _setup_ai(bot: Bot, sf, settings: Settings) -> None:
     # WARNING, а не INFO: уровень логов по умолчанию WARNING, а включённый ИИ
     # админ должен видеть при каждом старте.
     log.warning(
-        "ИИ включён: %s / %s, режим %s, пауза %.0f с, вложения %s",
+        "ИИ включён: %s / %s%s, режим %s, пауза %.0f с, вложения %s",
         ai.provider,
         ai.model,
+        f" (запасная {ai.fallback_model})" if ai.fallback_model and ai.fallback_model != ai.model else "",
         ai.mode,
         ai.reply_delay_sec,
         f"до {ai.media_max_mb} МБ" if ai.media_enabled else "выкл",
@@ -98,6 +100,7 @@ async def main() -> None:
         settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    settings = await resolve_waiting_icon(bot, settings)
     dp = Dispatcher(storage=MemoryStorage())
     dp["settings"] = settings
     dp["session_factory"] = sf

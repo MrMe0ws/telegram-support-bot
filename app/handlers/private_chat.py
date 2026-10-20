@@ -18,6 +18,7 @@ from app.keyboards.help_menu_kb import kb_start_inline
 from app.services.help_menu_delivery import send_help_menu_to_chat
 from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import tickets as ticket_svc
+from app.services import topic_status
 from app.services.ai.service import get_ai_service
 from app.services.ticket_flow import close_ticket_by_id
 from app.states import AdminFlow, UserFlow
@@ -494,6 +495,7 @@ async def process_support_message(
                     group_msg_id,
                 )
 
+    await topic_status.after_client_message(bot, session_factory, settings, ticket_pk)
     ai = get_ai_service()
     if ai is not None:
         ai.schedule(ticket_pk)

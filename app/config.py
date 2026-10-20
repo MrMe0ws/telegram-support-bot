@@ -75,6 +75,9 @@ class AiSettings:
     # С какого по счёту ответа ИИ в тикете показывать клиенту кнопку «Позвать человека»;
     # 0 — не показывать (позвать человека клиент может и словами).
     human_button_from: int = 1
+    # Запасная модель: на неё бот переключается, если основная упёрлась в лимит
+    # запросов или перегружена. Пусто — без запасной.
+    fallback_model: str = ""
 
     @property
     def is_active(self) -> bool:
@@ -118,6 +121,7 @@ def _ai_from_env() -> AiSettings:
         # Telegram отдаёт ботам файлы не больше 20 МБ.
         media_max_mb=_env_int("AI_MEDIA_MAX_MB", 10, 1, 20),
         human_button_from=_env_int("AI_HUMAN_BUTTON_FROM", 1, 0, 1000),
+        fallback_model=os.environ.get("AI_FALLBACK_MODEL", "gemini-2.5-flash-lite").strip(),
     )
 
 
@@ -136,6 +140,9 @@ class Settings:
     http_port: int
     remnawave: RemnawaveSettings
     ai: AiSettings
+    # Значок темы «ждёт человека»: ID кастомного эмодзи или само эмодзи из набора
+    # значков тем (при старте переводится в ID). Пусто — не менять значок.
+    topic_icon_emoji_waiting: str = ""
 
     @staticmethod
     def from_env() -> "Settings":
@@ -209,4 +216,5 @@ class Settings:
             http_port=int(os.environ.get("HTTP_PORT", "8080") or "8080"),
             remnawave=remnawave,
             ai=_ai_from_env(),
+            topic_icon_emoji_waiting=os.environ.get("TOPIC_ICON_EMOJI_WAITING", "❗").strip(),
         )

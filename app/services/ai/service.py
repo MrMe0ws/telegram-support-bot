@@ -19,6 +19,7 @@ from app.i18n import tr
 from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
+from app.services import topic_status
 from app.services.ai.knowledge import KnowledgeLoader
 from app.services.ai.formatting import to_plain_text, to_telegram_html
 from app.services.ai.media import MEDIA_CONTENT_TYPES, Media, media_mime
@@ -227,11 +228,14 @@ class AiService:
         except AiRateLimited as e:
             log.warning("ИИ: лимит запросов, тикет %s: %s", ticket_id, e)
             await self._topic_notice(ticket_id, tr("ai", "topic_rate_limited_html"))
+            await self._waiting(ticket_id, True)
         except AiError as e:
             log.warning("ИИ: нет ответа, тикет %s: %s", ticket_id, e)
             await self._topic_notice(ticket_id, tr("ai", "topic_error_html", error=escape(str(e))))
+            await self._waiting(ticket_id, True)
         except Exception:
             log.exception("ИИ: сбой при ответе в тикете %s", ticket_id)
+            await self._waiting(ticket_id, True)
         finally:
             self._stop_typing(ticket_id)
             if self._tasks.get(ticket_id) is asyncio.current_task():
@@ -360,6 +364,13 @@ class AiService:
             log.warning("ИИ: сообщение в тему тикета %s не отправлено: %s", snap.id, e)
             return None
 
+    async def _waiting(self, ticket_id: int, waiting: bool) -> None:
+        """Значок темы «ждёт человека» (TOPIC_ICON_EMOJI_WAITING)."""
+        try:
+            await topic_status.set_waiting(self._bot, self._sf, self._settings, ticket_id, waiting)
+        except Exception as e:
+            log.warning("ИИ: значок темы тикета %s не обновлён: %s", ticket_id, e)
+
     async def _topic_notice(self, ticket_id: int, html: str) -> None:
         async with self._sf() as session:
             t = await ticket_svc.get_ticket_by_id(session, ticket_id)
@@ -446,6 +457,7 @@ class AiService:
         )
         if not delivered:
             await self._topic_send(snap, tr("ai", "topic_delivery_failed_html"))
+            await self._waiting(ticket_id, True)
             return False
 
         async with self._sf() as session:
@@ -470,6 +482,7 @@ class AiService:
                         forum_chat_id=snap.forum_chat_id,
                         staff_message_id=topic_message_id,
                     )
+        await self._waiting(ticket_id, False)
         return True
 
     # ── Черновики (AI_MODE=draft) ───────────────────────────────────────
@@ -628,6 +641,7 @@ class AiService:
                 summary=escape(summary or "—"),
             )
         await self._topic_send(snap, notice)
+        await self._waiting(ticket_id, True)
 
         # В режиме черновиков клиент с ИИ не общался — сообщать ему не о чем.
         if initiator == "client" or self.mode == "auto":

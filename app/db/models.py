@@ -48,6 +48,8 @@ class Ticket(Base):
     )
     # ИИ молчит в этом тикете: человек взял его на себя или ИИ передал его людям.
     ai_paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Клиент ждёт ответа сотрудника — у темы значок TOPIC_ICON_EMOJI_WAITING.
+    awaiting_human: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     messages: Mapped[list["StoredMessage"]] = relationship(back_populates="ticket")

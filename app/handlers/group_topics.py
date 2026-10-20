@@ -11,6 +11,7 @@ from aiogram.types import Message
 from app.db.models import MessageSource
 from app.i18n import tr
 from app.services import reaction_bridge as reaction_bridge_svc
+from app.services import topic_status
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
 from app.services.ai.service import get_ai_service
@@ -360,6 +361,8 @@ async def staff_reply(
     ai = get_ai_service()
     if ai is not None and replied_ticket_id is not None:
         await ai.pause_by_staff(replied_ticket_id)
+    if replied_ticket_id is not None:
+        await topic_status.set_waiting(bot, session_factory, settings, replied_ticket_id, False)
     if sent_to_cabinet:
         return
 
