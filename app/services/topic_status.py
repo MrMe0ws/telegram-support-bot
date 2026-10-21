@@ -4,6 +4,9 @@
 Значок ставится, когда клиент написал, а отвечать будет человек (ИИ выключен,
 молчит в этом тикете или готовит только черновики), когда ИИ передал тикет
 людям или не смог ответить. Снимается, когда клиенту ответили — сотрудник или ИИ.
+После первого ответа сотрудника значок до закрытия тикета больше не ставится.
+
+Уведомления «бот изменил значок темы» бот удаляет (handlers/group_topics.py).
 """
 
 from __future__ import annotations
@@ -53,21 +56,40 @@ async def resolve_waiting_icon(bot: Bot, settings: Settings) -> Settings:
     return dataclasses.replace(settings, topic_icon_emoji_waiting="")
 
 
-async def set_waiting(bot: Bot, session_factory, settings: Settings, ticket_id: int, waiting: bool) -> None:
-    """Поставить или снять значок. Telegram дёргается, только если состояние сменилось."""
+async def set_waiting(
+    bot: Bot,
+    session_factory,
+    settings: Settings,
+    ticket_id: int,
+    waiting: bool,
+    *,
+    by_staff: bool = False,
+) -> None:
+    """
+    Поставить или снять значок. Telegram дёргается, только если состояние сменилось.
+
+    Значок ставится один раз — пока сотрудник не ответил. После ответа сотрудника
+    (by_staff) тема до закрытия остаётся «открытой», чтобы новые сообщения клиента
+    не гоняли значок туда-обратно.
+    """
     icon_waiting = settings.topic_icon_emoji_waiting
     if not icon_waiting:
         return
     async with session_factory() as session:
         async with session.begin():
-            changed = await session.execute(
-                update(Ticket)
-                .where(
-                    Ticket.id == ticket_id,
-                    Ticket.status == TicketStatus.open.value,
-                    Ticket.awaiting_human != waiting,
+            if by_staff:
+                await session.execute(
+                    update(Ticket).where(Ticket.id == ticket_id).values(staff_replied=True)
                 )
-                .values(awaiting_human=waiting)
+            clauses = [
+                Ticket.id == ticket_id,
+                Ticket.status == TicketStatus.open.value,
+                Ticket.awaiting_human != waiting,
+            ]
+            if waiting:
+                clauses.append(Ticket.staff_replied.is_(False))
+            changed = await session.execute(
+                update(Ticket).where(*clauses).values(awaiting_human=waiting)
             )
             if changed.rowcount == 0:
                 return

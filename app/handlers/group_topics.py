@@ -278,6 +278,22 @@ async def ai_in_topic(
         await message.reply(tr("ai", "cmd_status_off" if ticket.ai_paused else "cmd_status_on"))
 
 
+@router.message(F.chat.type.in_({"supergroup", "group"}), F.forum_topic_edited)
+async def drop_icon_change_notice(message: Message, bot: Bot, settings):
+    """«Бот изменил значок темы» — служебный спам, удаляем (нужно право на удаление сообщений)."""
+    edited = message.forum_topic_edited
+    if message.chat.id != settings.support_group_id:
+        return
+    if not message.from_user or message.from_user.id != bot.id:
+        return
+    if edited.icon_custom_emoji_id is None or edited.name is not None:
+        return
+    try:
+        await message.delete()
+    except Exception as e:
+        log.debug("Уведомление о смене значка темы не удалено: %s", e)
+
+
 @router.message(
     F.chat.type.in_({"supergroup", "group"}),
     F.message_thread_id.as_("tid"),
@@ -362,7 +378,9 @@ async def staff_reply(
     if ai is not None and replied_ticket_id is not None:
         await ai.pause_by_staff(replied_ticket_id)
     if replied_ticket_id is not None:
-        await topic_status.set_waiting(bot, session_factory, settings, replied_ticket_id, False)
+        await topic_status.set_waiting(
+            bot, session_factory, settings, replied_ticket_id, False, by_staff=True
+        )
     if sent_to_cabinet:
         return
 

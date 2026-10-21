@@ -110,6 +110,38 @@ def test_client_message_icon_depends_on_who_answers(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_after_staff_reply_icon_stays_open(tmp_path) -> None:
+    async def scenario():
+        svc, sf, bot, settings, tid, engine = await _setup_icons(tmp_path, AiReply(text="ответ"))
+        try:
+            set_ai_service(None)
+            await topic_status.after_client_message(bot, sf, settings, tid)
+            await topic_status.set_waiting(bot, sf, settings, tid, False, by_staff=True)
+            assert bot.icons == [WAIT, OPEN]
+
+            # Клиент пишет снова, ИИ передаёт людям — значок уже не прыгает.
+            await topic_status.after_client_message(bot, sf, settings, tid)
+            await topic_status.set_waiting(bot, sf, settings, tid, True)
+            await topic_status.set_waiting(bot, sf, settings, tid, False, by_staff=True)
+            assert bot.icons == [WAIT, OPEN]
+        finally:
+            set_ai_service(None)
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_staff_reply_before_waiting_also_locks(tmp_path) -> None:
+    async def scenario():
+        svc, sf, bot, settings, tid, engine = await _setup_icons(tmp_path, AiReply(text="ответ"))
+        await topic_status.set_waiting(bot, sf, settings, tid, False, by_staff=True)
+        await topic_status.set_waiting(bot, sf, settings, tid, True)
+        assert bot.icons == []
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_draft_mode_client_message_waits_for_human(tmp_path) -> None:
     async def scenario():
         svc, sf, bot, settings, tid, engine = await _setup_icons(tmp_path, AiReply(text="ч"), mode="draft")

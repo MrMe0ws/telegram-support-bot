@@ -68,6 +68,10 @@ async def _ensure_migrations(conn) -> None:
             await conn.execute(
                 text("ALTER TABLE tickets ADD COLUMN awaiting_human BOOLEAN NOT NULL DEFAULT FALSE")
             )
+        if not await _table_has_column(conn, "tickets", "staff_replied"):
+            await conn.execute(
+                text("ALTER TABLE tickets ADD COLUMN staff_replied BOOLEAN NOT NULL DEFAULT FALSE")
+            )
 
 
 async def init_db(engine) -> None:
