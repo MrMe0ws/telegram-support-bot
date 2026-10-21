@@ -108,18 +108,20 @@ def _help_links_body(rows: list) -> str:
 
 
 @router.message(Command("admin"), F.chat.type == ChatType.PRIVATE)
-async def cmd_admin(message: Message, settings):
+async def cmd_admin(message: Message, state: FSMContext, settings):
     if not _admin_ok(settings, message.from_user.id if message.from_user else None):
         await _answer_admin_denied(message)
         return
+    await state.clear()
     await message.answer(tr("admin", "panel_intro"), reply_markup=kb_admin_home())
 
 
 @router.message(AdminPanelReplyButton())
-async def open_admin_from_button(message: Message, settings):
+async def open_admin_from_button(message: Message, state: FSMContext, settings):
     if not _admin_ok(settings, message.from_user.id if message.from_user else None):
         await message.answer(tr("admin", "no_permission"))
         return
+    await state.clear()
     await message.answer(tr("admin", "panel_intro"), reply_markup=kb_admin_home())
 
 

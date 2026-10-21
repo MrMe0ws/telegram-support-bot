@@ -67,6 +67,20 @@ def reload_texts() -> None:
     _BUNDLE = None
 
 
+# Тексты, переписанные админом в боте: (файл, ключ) → строка. Важнее YAML.
+_OVERRIDES: dict[tuple[str, str], str] = {}
+
+
+def set_text_overrides(overrides: dict[tuple[str, str], str]) -> None:
+    _OVERRIDES.clear()
+    _OVERRIDES.update(overrides)
+
+
+def tr_default(stem: str, key: str) -> str:
+    """Строка из YAML без учёта правок в боте."""
+    return _lookup((stem, key), {}, use_overrides=False)
+
+
 def tr(*parts: str, **kwargs: str | int | float) -> str:
     """
     Доступ к строкам из texts/<locale>/<имя>.yml:
@@ -77,6 +91,12 @@ def tr(*parts: str, **kwargs: str | int | float) -> str:
     """
     if len(parts) < 2:
         raise ValueError("Нужно минимум два аргумента: блок_файла, ключ")
+    return _lookup(parts, kwargs, use_overrides=True)
+
+
+def _lookup(parts: tuple[str, ...], kwargs: dict, *, use_overrides: bool) -> str:
+    if use_overrides and len(parts) == 2 and parts in _OVERRIDES:
+        return _OVERRIDES[parts]  # type: ignore[index]
 
     bundle = texts_bundle()
     stem = parts[0]

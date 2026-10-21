@@ -28,6 +28,12 @@ def kb_admin_home() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text=tr("settings", "panel_btn"),
+                    callback_data="st:go:home",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text=tr("admin", "panel_btn_close_msg"),
                     callback_data="ap:x",
                 ),

@@ -24,7 +24,7 @@ from app.services.ai.knowledge import KnowledgeLoader
 from app.services.ai.formatting import to_plain_text, to_telegram_html
 from app.services.ai.media import MEDIA_CONTENT_TYPES, Media, media_mime
 from app.services.ai.prompt import AI_NOTE, build_turns, client_card, system_prompt
-from app.services.ai.provider import AiError, AiProvider, AiRateLimited, AiReply
+from app.services.ai.provider import AiError, AiProvider, AiRateLimited, AiReply, ModelChain
 from app.services.remnawave_client import RemnawaveClient
 
 log = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 _TYPING_EVERY_SEC = 4.5
 
 # Модели уходят вложения только из последних сообщений клиента: старые она уже
-# разобрала в своих ответах. Общий объём держим ниже лимита запроса Gemini (20 МБ).
+# разобрала в своих ответах. Общий объём держим ниже лимитов запроса провайдеров (Gemini — 20 МБ).
 _MAX_MEDIA_FILES = 4
 _MAX_MEDIA_TOTAL_BYTES = 15 * 1024 * 1024
 
@@ -130,7 +130,6 @@ class AiService:
         self._bot = bot
         self._sf = session_factory
         self._settings = settings
-        self._ai = settings.ai
         self._provider = provider
         self._knowledge = knowledge
         self._tasks: dict[int, asyncio.Task] = {}
@@ -141,8 +140,28 @@ class AiService:
         self._stopped: set[int] = set()
 
     @property
+    def _ai(self):
+        return self._settings.ai
+
+    @property
+    def enabled(self) -> bool:
+        return self._ai.enabled
+
+    @property
     def mode(self) -> str:
         return self._ai.mode
+
+    def apply_settings(self, settings: Settings) -> None:
+        """Админ поменял настройки в боте. Выключили ИИ — ждущие ответы отменяются."""
+        self._settings = settings
+        if not self.enabled:
+            for ticket_id in list(self._tasks):
+                self.cancel(ticket_id)
+
+    @property
+    def chain(self) -> ModelChain | None:
+        """Цепочка моделей — чтобы админ мог переключать их в боте."""
+        return self._provider if isinstance(self._provider, ModelChain) else None
 
     # ── Очередь ─────────────────────────────────────────────────────────
 
@@ -658,5 +677,12 @@ def set_ai_service(service: AiService | None) -> None:
 
 
 def get_ai_service() -> AiService | None:
-    """None — ИИ выключен (AI_ENABLED) или не настроен."""
+    """None — ИИ выключен (AI_ENABLED или в настройках бота) или не настроен."""
+    if _instance is None or not _instance.enabled:
+        return None
+    return _instance
+
+
+def peek_ai_service() -> AiService | None:
+    """Сервис ИИ, даже если он сейчас выключен: черновики, настройки моделей. None — не настроен."""
     return _instance

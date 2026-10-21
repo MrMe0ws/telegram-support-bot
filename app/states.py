@@ -8,7 +8,7 @@ class UserFlow(StatesGroup):
 
 
 class AdminFlow(StatesGroup):
-    """ЛС админа: блокировки и добавление пункта «Помощь»."""
+    """ЛС админа: блокировки и пункты «Помощь»."""
 
     block_uid = State()
     block_reason = State()
@@ -20,3 +20,11 @@ class AdminFlow(StatesGroup):
     help_edit_title = State()
     help_edit_link = State()
     help_edit_body = State()
+
+
+class SettingsFlow(StatesGroup):
+    """ЛС админа, «⚙️ Настройки»: ввод своего значения, списка моделей, текста для клиентов."""
+
+    value = State()
+    models = State()
+    text = State()

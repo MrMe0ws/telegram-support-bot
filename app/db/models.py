@@ -162,3 +162,12 @@ class HelpMenuLink(Base):
     url: Mapped[str] = mapped_column(Text, default="")
     body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(Integer, index=True)
+
+
+class BotSetting(Base):
+    """Настройки, которые админ меняет в боте (поверх .env): ключ → значение."""
+
+    __tablename__ = "bot_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")

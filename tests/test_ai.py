@@ -18,7 +18,8 @@ from app.services import reaction_bridge as reaction_bridge_svc  # noqa: E402
 from app.services import tickets as ticket_svc  # noqa: E402
 from app.services.ai.knowledge import KnowledgeLoader  # noqa: E402
 from app.services.ai.prompt import AI_NOTE, Turn, build_turns  # noqa: E402
-from app.services.ai.provider import AiError, AiReply, parse_gemini_response  # noqa: E402
+from app.services.ai.provider import AiError, AiReply  # noqa: E402
+from app.services.ai.providers.gemini import parse_gemini_response  # noqa: E402
 from app.services.ai.service import AiService  # noqa: E402
 
 
@@ -176,7 +177,8 @@ def _settings(tmp_path, mode: str = "auto", delay: float = 0.05) -> Settings:
         timezone="UTC", http_host="", proxy_headers=False, forwarded_for="", forwarded_proto="",
     )
     ai = AiSettings(
-        enabled=True, mode=mode, provider="gemini", api_key="k", model="m", proxy_url="",
+        enabled=True, mode=mode, provider="gemini", models=("gemini:m",), api_keys=(("gemini", "k"),),
+        proxy_url="",
         reply_delay_sec=delay, knowledge_dir=str(tmp_path / "kb"), history_limit=30,
         max_replies_per_ticket=3, timeout_sec=10, assistant_name="Бот",
     )
@@ -513,7 +515,7 @@ def test_photo_and_voice_reach_model(tmp_path) -> None:
 def test_oversized_and_unknown_files_are_not_sent(tmp_path) -> None:
     async def scenario():
         svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ок"))
-        svc._ai = replace(svc._ai, media_max_mb=1)
+        svc.apply_settings(replace(svc._settings, ai=replace(svc._ai, media_max_mb=1)))
         bot.files = {
             "big": ("documents/file_1.pdf", b"x" * (1024 * 1024 + 1)),
             "zip": ("documents/file_2.zip", b"zip"),
@@ -538,7 +540,7 @@ def test_oversized_and_unknown_files_are_not_sent(tmp_path) -> None:
 def test_media_disabled_downloads_nothing(tmp_path) -> None:
     async def scenario():
         svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ок"))
-        svc._ai = replace(svc._ai, media_enabled=False)
+        svc.apply_settings(replace(svc._settings, ai=replace(svc._ai, media_enabled=False)))
         bot.files = {"ph": ("photos/file_1.jpg", b"jpeg")}
         await _client_sends(sf, tid, "photo", "ph")
         svc.schedule(tid)
@@ -554,10 +556,9 @@ def test_media_disabled_downloads_nothing(tmp_path) -> None:
 
 def test_gemini_request_carries_media(tmp_path) -> None:
     from app.services.ai.media import Media
-    from app.services.ai.provider import GeminiProvider
+    from app.services.ai.providers.gemini import GeminiBackend
 
-    settings = _settings(tmp_path).ai
-    contents = GeminiProvider(settings)._contents(
+    contents = GeminiBackend("k", "", 10)._contents(
         [Turn("user", "смотри", (Media("image/png", b"png"),)), Turn("assistant", "вижу")]
     )
     assert [c.role for c in contents] == ["user", "model"]
@@ -589,7 +590,7 @@ def test_photo_caption_keeps_file() -> None:
 
 async def _two_ai_replies(tmp_path, button_from: int) -> list:
     svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ответ"))
-    svc._ai = replace(svc._ai, human_button_from=button_from)
+    svc.apply_settings(replace(svc._settings, ai=replace(svc._ai, human_button_from=button_from)))
     for question in ("первый вопрос", "второй вопрос"):
         await _client_says(sf, tid, question)
         svc.schedule(tid)

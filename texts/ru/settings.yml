@@ -1,0 +1,356 @@
+# Админ-панель → «⚙️ Настройки»: меняются на ходу, без перезапуска; изменения — в БД, важнее .env
+
+panel_btn: ⚙️ Настройки
+
+btn_back: ⬅️ Назад
+btn_to_panel: ⬅️ В панель
+btn_custom: ✏️ Своё значение
+btn_reset: "↩️ Как в .env ({value})"
+btn_reset_text: ↩️ Вернуть стандартный
+btn_cancel: ↩️ Отмена
+btn_refresh: 🔄 Обновить
+
+edited_mark: ✏️
+on: ✅ вкл
+off: ⛔️ выкл
+current_mark: "• {label}"
+
+source_env: из .env
+source_bot: "изменено в боте · в .env: {value}"
+
+saved: ✅ Сохранено
+reset_done: ↩️ Как в .env
+not_admin: 🚫 Недостаточно прав
+stale: Экран устарел — откройте настройки заново
+
+# ── Главный экран ────────────────────────────────────────────────────────
+
+home: |
+  <b>⚙️ Настройки</b>
+  Изменения действуют сразу, перезапуск не нужен. По умолчанию всё как в <code>.env</code>; изменённое в боте помечено ✏️ и возвращается кнопкой «↩️ Как в .env».
+
+  🤖 <b>ИИ:</b> {ai}
+  🎫 <b>Темы:</b> <code>{topic}</code>
+  💬 <b>Тексты:</b> {texts}
+  🔗 <b>Remnawave:</b> {remnawave}
+
+home_btn_ai: 🤖 ИИ-помощник
+home_btn_tickets: 🎫 Тикеты и темы
+home_btn_texts: 💬 Тексты для клиентов
+home_btn_integrations: 🔗 Интеграции
+home_btn_system: 🛠 Система
+
+home_ai_none: не настроен (нет ключа API в .env)
+home_ai_off: ⛔️ выключен
+home_ai_on: "✅ включён · {mode}"
+home_texts_default: стандартные
+home_texts_edited: "изменено {n} из {total}"
+
+# ── ИИ-помощник ──────────────────────────────────────────────────────────
+
+ai: |
+  <b>🤖 ИИ-помощник</b>
+  Отвечает клиентам по базе знаний (папка <code>knowledge/</code>), а если не уверен или клиент просит человека — передаёт тикет сотрудникам.
+
+  {state}
+  <b>Режим:</b> {mode}
+  <b>Модели:</b> {models}
+
+  Переключатели меняются одним нажатием, остальное — в подменю.
+
+ai_not_configured: |
+  <b>🤖 ИИ-помощник</b>
+  ⚠️ ИИ не настроен: в <code>.env</code> нет ключа API ни для одной модели.
+
+  Задайте <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code> или <code>ANTHROPIC_API_KEY</code> и перезапустите бота — после этого ИИ можно включать и настраивать здесь.
+
+ai_state_on: "Состояние: <b>✅ включён</b>"
+ai_state_off: "Состояние: <b>⛔️ выключен</b> — клиентам отвечают только сотрудники"
+ai_models_summary: "⭐ <code>{main}</code>{fallback}"
+ai_models_fallback: "и ещё {n} в резерве"
+
+mode_short_auto: авто
+mode_short_draft: черновики
+mode_auto: 🤖 Авто — отвечает клиенту сам
+mode_draft: 📝 Черновики — готовит ответ, отправляет сотрудник
+
+ai_btn_enabled_on: ✅ ИИ включён
+ai_btn_enabled_off: ⛔️ ИИ выключен
+ai_btn_mode_auto: "Режим: 🤖 Авто"
+ai_btn_mode_draft: "Режим: 📝 Черновики"
+ai_btn_models: 🧠 Модели
+ai_btn_check: 🧪 Проверить ИИ
+ai_btn_delay: "⏱ Пауза: {value}"
+ai_btn_limit: "🔢 Ответов в тикете: {value}"
+ai_btn_history: "📜 История: {value}"
+ai_btn_media_on: ✅ Видит фото и файлы
+ai_btn_media_off: ⛔️ Не видит фото и файлы
+ai_btn_media_size: "📦 Файлы до {value}"
+ai_btn_human: "🙋 «Позвать человека»: {value}"
+ai_btn_name: "✍️ Подпись: {value}"
+
+ai_toast_on: ✅ ИИ включён
+ai_toast_off: ⛔️ ИИ выключен — ждущие ответы отменены
+ai_toast_mode: "Режим: {mode}"
+ai_toast_media_on: ✅ ИИ видит фото и файлы
+ai_toast_media_off: ⛔️ ИИ видит только текст
+
+# Проверка ИИ: тестовый запрос ко всем моделям
+check_running: "⏳ Проверяю модели ИИ — до {sec} с…"
+check_busy: Проверка уже идёт
+check: |
+  <b>🧪 Проверка ИИ</b>
+  Связь с API: {proxy}
+  ИИ для клиентов: {state}
+
+  {lines}
+
+  {verdict}
+check_ai_on: ✅ включён
+check_ai_off: ⛔️ выключен (проверка работает и так)
+check_proxy_on: "через прокси <code>{proxy}</code>"
+check_proxy_off: напрямую (AI_PROXY_URL не задан)
+check_line: "{idx}. {mark}<code>{spec}</code> — {status}"
+check_reply: "   ↳ «{text}»"
+check_error: "   ↳ <i>{text}</i>"
+check_ok: "✅ отвечает, {sec} с"
+check_no_key: ➖ нет ключа API — пропускается
+check_limit: ❌ лимит запросов
+check_unavailable: ❌ перегружена или сбой у провайдера
+check_timeout: "❌ нет ответа за {sec} с"
+check_failed: ❌ ошибка
+check_verdict_main: "✅ Клиентам отвечает основная модель."
+check_verdict_fallback: "⚠️ Основная модель не отвечает — сейчас ответит резервная <code>{spec}</code>."
+check_verdict_none: ❌ Ни одна модель не отвечает — клиентам ответят только сотрудники.
+check_hint_proxy: "💡 Из РФ API Gemini, OpenAI и Claude напрямую недоступны — задайте прокси в <code>AI_PROXY_URL</code> в .env."
+check_hint_key: "💡 Ошибки 401/403 обычно значат неверный ключ API в .env."
+check_btn_again: 🔄 Проверить ещё раз
+
+# Модели (перенесено из отдельной кнопки «🤖 Модели ИИ»)
+models: |
+  <b>🧠 Модели ИИ</b>
+  Отвечает первая модель. Если она не ответила (лимит запросов, перегрузка, сбой, нет связи), вопрос уходит следующей по списку — в том числе модели другого провайдера.
+
+  {lines}
+
+  Ключи API: {keys}
+  {source}
+
+  Нажмите на модель, чтобы сделать её основной.
+models_line: "{idx}. {mark}<code>{spec}</code>{note}"
+models_main_mark: ⭐
+models_no_key: "— нет ключа, пропускается"
+models_source_env: "Список: из .env (AI_MODEL, AI_FALLBACK_MODELS)"
+models_source_bot: "Список: изменён в боте ✏️"
+models_btn_edit: ✏️ Изменить список
+models_btn_reset: ↩️ Как в .env
+models_main_set: "⭐ Основная: {spec}"
+models_ask: |
+  ✍️ Отправьте модели <b>через запятую</b>: первая — основная, остальные — резервные по порядку.
+
+  Провайдер определяется по имени модели (<code>gemini-…</code>, <code>gpt-…</code>, <code>claude-…</code>) или указывается явно: <code>openai:gpt-6-luna</code>.
+
+  Сейчас:
+  <code>{current}</code>
+
+  Ключи API задаются только в .env: GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY.
+
+# ── Поля: заголовок, пояснение, единицы ──────────────────────────────────
+
+field: |
+  <b>{title}</b>
+  {hint}
+
+  Сейчас: <b>{value}</b> ({source})
+
+f_ai_reply_delay_sec_title: ⏱ Пауза перед ответом
+f_ai_reply_delay_sec_hint: "Сколько секунд ИИ ждёт, пока клиент допишет: часто вопрос приходит несколькими сообщениями подряд. Клиент в это время видит «печатает…»."
+f_ai_reply_delay_sec_value: "{v} с"
+
+f_ai_max_replies_per_ticket_title: 🔢 Ответов ИИ в одном тикете
+f_ai_max_replies_per_ticket_hint: После стольких ответов ИИ передаёт тикет сотрудникам — чтобы разговор не ходил по кругу.
+f_ai_max_replies_per_ticket_value: "{v}"
+
+f_ai_history_limit_title: 📜 История для ИИ
+f_ai_history_limit_hint: Сколько последних сообщений тикета видит ИИ. Больше — лучше помнит разговор, но запрос дороже и дольше.
+f_ai_history_limit_value: "{v} сообщ."
+
+f_ai_media_max_mb_title: 📦 Размер файлов для ИИ
+f_ai_media_max_mb_hint: Фото и файлы больше этого размера ИИ не отправляются — тикет уходит человеку. Telegram отдаёт ботам файлы до 20 МБ.
+f_ai_media_max_mb_value: "{v} МБ"
+
+f_ai_human_button_from_title: 🙋 Кнопка «Позвать человека»
+f_ai_human_button_from_hint: С какого по счёту ответа ИИ в тикете показывать клиенту эту кнопку. Словами позвать человека клиент может всегда.
+f_ai_human_button_from_value: "с {v}-го ответа"
+f_ai_human_button_from_never: никогда
+
+f_ai_assistant_name_title: ✍️ Подпись ответов ИИ
+f_ai_assistant_name_hint: Как подписаны ответы ИИ в теме тикета и в чате web-кабинета.
+f_ai_assistant_name_value: "{v}"
+
+f_topic_name_template_title: 🏷 Название темы
+f_topic_name_template_hint: |
+  Как называется тема нового тикета в группе. Плейсхолдеры:
+  <code>{{username}}</code> — @ник или имя клиента
+  <code>{{name}}</code> — имя клиента
+  <code>{{ticket_id}}</code> — номер тикета
+  <code>{{uid}}</code> — Telegram ID клиента
+
+  Пример с текущим шаблоном: <b>{example}</b>
+  Уже созданные темы не переименовываются.
+f_topic_name_template_value: "<code>{v}</code>"
+
+f_remnawave_timezone_title: 🕐 Часовой пояс
+f_remnawave_timezone_hint: В нём показываются даты подписки в <code>/profile</code> и в справке о клиенте для ИИ. Своё значение — в формате <code>Europe/Moscow</code>.
+f_remnawave_timezone_value: "{v}"
+
+f_log_level_title: 📝 Уровень логов
+f_log_level_hint: |
+  Сколько бот пишет в логи контейнера (<code>docker compose logs</code>).
+  <b>WARNING</b> — только предупреждения и ошибки (обычный режим)
+  <b>INFO</b> — плюс рабочие события
+  <b>DEBUG</b> — всё подряд, для поиска проблем
+  <b>ERROR</b> — только ошибки
+  После перезапуска действует значение отсюда, если оно изменено.
+f_log_level_value: "{v}"
+
+ask_value: |
+  ✍️ Отправьте новое значение для «{title}».
+  {limits}
+ask_limits_number: "Допустимо: от {lo} до {hi}."
+ask_limits_text: "Не длиннее {n} символов."
+bad_value: "⚠️ {error}. Отправьте значение ещё раз или нажмите «Отмена»."
+cancelled: ✔️ Отменено
+expect_text: ✍️ Сейчас нужно отправить текст — или нажмите «Отмена»
+
+# ── Тикеты и темы ────────────────────────────────────────────────────────
+
+tickets: |
+  <b>🎫 Тикеты и темы</b>
+  Как выглядят темы тикетов в группе поддержки.
+
+  <b>Название темы:</b> <code>{template}</code>
+  пример: {example}
+
+  <b>Значки темы</b> (по ним в списке тем видно состояние тикета):
+  открыт — {icon_open}
+  закрыт — {icon_closed}
+  ждёт человека — {icon_waiting}
+
+tickets_btn_name: 🏷 Название темы
+tickets_btn_icon_open: "Значок «открыт»: {icon}"
+tickets_btn_icon_closed: "Значок «закрыт»: {icon}"
+tickets_btn_icon_waiting: "Значок «ждёт человека»: {icon}"
+
+icon_none: нет
+icon_unknown: "ID {id}"
+
+icon_slot_open: «открыт»
+icon_slot_closed: «закрыт»
+icon_slot_waiting: «ждёт человека»
+icon_hint_open: Ставится при создании темы. «Без значка» — тема создаётся со стандартным значком.
+icon_hint_closed: Ставится, когда тикет закрывают. «Без значка» — значок при закрытии не меняется.
+icon_hint_waiting: Ставится, когда клиент написал, а ответить должен сотрудник (ИИ выключен, передал тикет или не смог ответить). «Без значка» — выключить.
+
+icons: |
+  <b>Значок {slot}</b>
+  {hint}
+
+  Сейчас: {icon} ({source})
+
+  Выберите значок — это все значки тем, которые разрешает Telegram.
+icons_btn_none: 🚫 Без значка
+icons_unavailable: ⚠️ Не удалось получить набор значков тем от Telegram. Попробуйте позже.
+icons_toast: "Значок {slot}: {icon}"
+
+# ── Тексты для клиентов ──────────────────────────────────────────────────
+
+texts: |
+  <b>💬 Тексты для клиентов</b>
+  Что клиент видит в чате с ботом. Изменённые помечены ✏️ и возвращаются к стандартным одной кнопкой.
+
+t_user_start_title: 👋 Приветствие
+t_user_start_hint: Ответ на /start — первое, что видит клиент.
+t_user_create_ticket_prompt_title: ✍️ Просьба описать вопрос
+t_user_create_ticket_prompt_hint: После кнопки «Создать обращение».
+t_user_ticket_accepted_title: ✅ Обращение принято
+t_user_ticket_accepted_hint: После первого сообщения клиента, когда создаётся тикет.
+t_flow_notify_user_default_title: 🔒 Обращение закрыто
+t_flow_notify_user_default_hint: Когда сотрудник закрывает тикет командой /close в теме.
+t_user_blocked_title: 🚫 Для заблокированных
+t_user_blocked_hint: Ответ клиенту, которого заблокировали в админ-панели.
+
+text_view: |
+  <b>{title}</b>
+  {hint}
+  Сейчас: {source}
+
+  ┈┈┈┈┈┈┈┈┈┈
+  {text}
+text_source_default: стандартный текст
+text_source_bot: изменён в боте ✏️
+text_btn_edit: ✏️ Изменить
+text_ask: |
+  ✍️ Отправьте новый текст для «{title}».
+
+  Форматирование Telegram (жирный, курсив, ссылки, цитаты) сохранится — оформляйте прямо в сообщении. Перед сохранением покажу, как текст увидит клиент.
+text_preview_header: "👀 Так клиент увидит новый текст «{title}»:"
+text_btn_save: ✅ Сохранить
+text_btn_retry: ✏️ Написать заново
+text_too_long: "⚠️ Слишком длинно: {n} символов, можно до {max}. Отправьте текст покороче."
+text_bad_html: "⚠️ Telegram не принял разметку: {error}. Отправьте текст ещё раз."
+text_saved: ✅ Текст сохранён — клиенты уже видят новый
+text_reset_done: ↩️ Вернул стандартный текст
+
+# ── Интеграции ───────────────────────────────────────────────────────────
+
+integrations: |
+  <b>🔗 Интеграции</b>
+  Подключения настраиваются в <code>.env</code> (адреса и ключи в боте не вводятся); здесь — включение, проверка связи и часовой пояс.
+
+  <b>Remnawave</b> — подписка клиента в <code>/profile</code> и в справке для ИИ
+  {remnawave}
+  Часовой пояс дат: <b>{tz}</b>
+
+  <b>Web-кабинет</b> — чат поддержки в кабинете магазина
+  {cabinet}
+
+rw_on: "✅ включён · <code>{url}</code>"
+rw_off: ⛔️ выключен
+rw_not_configured: ⚠️ не настроен — нужны REMNAWAVE_URL и REMNAWAVE_TOKEN в .env
+cabinet_on: ✅ подключён
+cabinet_off: ⚠️ не настроен — нужны SHOP_WEBHOOK_URL и SUPPORT_BRIDGE_SECRET в .env
+
+int_btn_rw_on: ✅ Remnawave включён
+int_btn_rw_off: ⛔️ Remnawave выключен
+int_btn_rw_check: 🔌 Проверить связь с панелью
+int_btn_tz: "🕐 Часовой пояс: {value}"
+rw_check_ok: ✅ Панель Remnawave отвечает
+rw_check_fail: "❌ Панель недоступна: {error}"
+rw_check_disabled: Remnawave выключен или не настроен
+rw_toast_on: ✅ Remnawave включён
+rw_toast_off: ⛔️ Remnawave выключен
+
+# ── Система ──────────────────────────────────────────────────────────────
+
+system: |
+  <b>🛠 Система</b>
+
+  Работает без перезапуска: <b>{uptime}</b>
+  Открытых тикетов: <b>{open_tickets}</b>
+  ИИ: {ai}
+  Уровень логов: <b>{log_level}</b>
+  Изменено в боте: <b>{overridden}</b>
+
+uptime_days: "{d} д {h} ч"
+uptime_hours: "{h} ч {m} мин"
+uptime_minutes: "{m} мин"
+
+sys_btn_log: "📝 Уровень логов: {value}"
+sys_btn_reset_all: ♻️ Сбросить всё к .env
+reset_all_ask: |
+  <b>♻️ Сбросить все настройки?</b>
+  Всё, что изменено в боте (ИИ, модели, темы, интеграции, уровень логов и тексты для клиентов), вернётся к значениям из <code>.env</code> и стандартным текстам.
+reset_all_yes: ♻️ Да, сбросить
+reset_all_no: ❌ Нет
+reset_all_done: ♻️ Все настройки — как в .env

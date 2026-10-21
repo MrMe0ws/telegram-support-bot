@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 
-from aiogram import Bot, Dispatcher
+from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -13,6 +13,7 @@ from app.config import Settings
 from app.db.session import create_engine, init_db, session_factory
 from app.handlers import (
     admin_panel,
+    admin_settings,
     ai_callbacks,
     group_topics,
     help_callbacks,
@@ -21,8 +22,10 @@ from app.handlers import (
 )
 from app.i18n import texts_bundle
 from app.services.ai.knowledge import KnowledgeLoader
+from app.services.ai import model_choice
 from app.services.ai.provider import create_provider
 from app.services.ai.service import AiService, set_ai_service
+from app.services import live_settings
 from app.services.help_links import seed_help_links_if_empty
 from app.services.remnawave_client import log_remnawave_connectivity
 from app.services.topic_status import resolve_waiting_icon
@@ -56,28 +59,47 @@ _configure_logging()
 log = logging.getLogger(__name__)
 
 
-def _setup_ai(bot: Bot, sf, settings: Settings) -> None:
+class LiveSettingsMiddleware(BaseMiddleware):
+    """Обработчики получают настройки с учётом изменений в боте (⚙️ Настройки)."""
+
+    async def __call__(self, handler, event, data):
+        data["settings"] = live_settings.current()
+        return await handler(event, data)
+
+
+async def _setup_ai(bot: Bot, sf, settings: Settings) -> None:
+    # Сервис создаётся и при выключенном ИИ, если есть ключи: включить его можно в боте.
     ai = settings.ai
-    if not ai.enabled:
-        return
-    if not ai.is_active:
-        log.warning("AI_ENABLED=true, но не задан AI_API_KEY или AI_MODEL — ИИ выключен")
+    if not ai.is_configured:
+        if ai.enabled:
+            log.warning(
+                "ИИ включён, но ни для одной модели (%s) не задан ключ API "
+                "(GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY) — ИИ выключен",
+                ", ".join(ai.models) or "—",
+            )
         return
     try:
         provider = create_provider(ai)
     except Exception as e:
         log.error("ИИ не запущен: %s", e)
         return
+    await model_choice.load_saved(sf, provider)
+    for spec in provider.models:
+        if not provider.has_key(spec):
+            log.warning("ИИ: для %s нет ключа API — модель пропускается", spec)
     knowledge = KnowledgeLoader(ai.knowledge_dir)
     knowledge.load()
-    set_ai_service(AiService(bot, sf, settings, provider, knowledge))
+    service = AiService(bot, sf, settings, provider, knowledge)
+    set_ai_service(service)
+    live_settings.subscribe(service.apply_settings)
     # WARNING, а не INFO: уровень логов по умолчанию WARNING, а включённый ИИ
     # админ должен видеть при каждом старте.
+    main_model, *fallback = provider.models
     log.warning(
-        "ИИ включён: %s / %s%s, режим %s, пауза %.0f с, вложения %s",
-        ai.provider,
-        ai.model,
-        f" (запасная {ai.fallback_model})" if ai.fallback_model and ai.fallback_model != ai.model else "",
+        "ИИ %s: %s%s, режим %s, пауза %.0f с, вложения %s",
+        "включён" if ai.enabled else "настроен, но выключен (включить: админ-панель → ⚙️ Настройки)",
+        main_model,
+        f" (резервные: {', '.join(fallback)})" if fallback else "",
         ai.mode,
         ai.reply_delay_sec,
         f"до {ai.media_max_mb} МБ" if ai.media_enabled else "выкл",
@@ -101,11 +123,14 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     settings = await resolve_waiting_icon(bot, settings)
+    settings = await live_settings.init(sf, settings)
     dp = Dispatcher(storage=MemoryStorage())
     dp["settings"] = settings
     dp["session_factory"] = sf
-    _setup_ai(bot, sf, settings)
+    dp.update.outer_middleware(LiveSettingsMiddleware())
+    await _setup_ai(bot, sf, settings)
 
+    dp.include_router(admin_settings.router)
     dp.include_router(admin_panel.router)
     dp.include_router(private_chat.router)
     dp.include_router(help_callbacks.router)

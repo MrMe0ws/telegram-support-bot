@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery
 from app.db.models import TicketStatus
 from app.i18n import tr
 from app.services import tickets as ticket_svc
-from app.services.ai.service import CB_CALL_HUMAN, CB_DRAFT_REJECT, CB_DRAFT_SEND, get_ai_service
+from app.services.ai.service import CB_CALL_HUMAN, CB_DRAFT_REJECT, CB_DRAFT_SEND, peek_ai_service
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def _int_suffix(data: str, prefix: str) -> int | None:
 async def client_calls_human(query: CallbackQuery, session_factory):
     """Кнопка «Позвать человека» под ответом ИИ."""
     ticket_id = _int_suffix(query.data or "", CB_CALL_HUMAN)
-    ai = get_ai_service()
+    ai = peek_ai_service()
     if ticket_id is None or ai is None:
         await query.answer()
         return
@@ -55,7 +55,7 @@ async def draft_decision(query: CallbackQuery, settings):
     data = query.data or ""
     send = data.startswith(CB_DRAFT_SEND)
     draft_id = _int_suffix(data, CB_DRAFT_SEND if send else CB_DRAFT_REJECT)
-    ai = get_ai_service()
+    ai = peek_ai_service()
     if draft_id is None or ai is None:
         await query.answer()
         return

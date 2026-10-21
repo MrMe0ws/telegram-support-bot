@@ -6,6 +6,7 @@ import logging
 
 from aiohttp import web
 
+from app.services import live_settings
 from app.services.cabinet_bridge import post_cabinet_message
 
 log = logging.getLogger(__name__)
@@ -23,7 +24,8 @@ def _authorized(request: web.Request, settings) -> bool:
 
 
 async def cabinet_message_handler(request: web.Request) -> web.Response:
-    settings = request.app["settings"]
+    # С учётом изменений в боте (⚙️ Настройки): шаблон имени темы, значки.
+    settings = live_settings.current(request.app["settings"])
     bot = request.app["bot"]
     session_factory = request.app["session_factory"]
 

@@ -10,7 +10,7 @@ import pytest
 os.environ.setdefault("TEXTS_DIR", os.path.join(os.path.dirname(__file__), "..", "texts"))
 
 from app.services import topic_status  # noqa: E402
-from app.services.ai.provider import AiError, AiRateLimited, AiReply, AiUnavailable, GeminiProvider  # noqa: E402
+from app.services.ai.provider import AiError, AiRateLimited, AiReply, AiUnavailable, ModelChain  # noqa: E402
 from app.services.ai.service import set_ai_service  # noqa: E402
 from tests.test_ai import GROUP_ID, FakeBot, _client_says, _settings, _setup, _wait  # noqa: E402
 
@@ -178,55 +178,82 @@ def test_resolve_waiting_icon(tmp_path, raw, expected) -> None:
     assert resolved.topic_icon_emoji_waiting == expected
 
 
-# ── Запасная модель ─────────────────────────────────────────────────────
+# ── Резервные модели ────────────────────────────────────────────────────
 
 
-def _provider(tmp_path, outcomes: dict) -> tuple[GeminiProvider, list[str]]:
-    ai = replace(_settings(tmp_path).ai, model="main", fallback_model="lite")
-    provider = GeminiProvider(ai)
-    calls: list[str] = []
+class FakeBackend:
+    def __init__(self, provider: str, outcomes: dict, calls: list[str]) -> None:
+        self._provider = provider
+        self._outcomes = outcomes
+        self._calls = calls
 
-    async def fake_generate(model, contents, config):
-        calls.append(model)
-        outcome = outcomes[model]
+    async def reply(self, model, system, turns):
+        spec = f"{self._provider}:{model}"
+        self._calls.append(spec)
+        outcome = self._outcomes[spec]
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
-    provider._generate = fake_generate
-    return provider, calls
 
-
-def _text_resp(text: str):
-    from google.genai import types
-
-    return types.GenerateContentResponse(
-        candidates=[types.Candidate(content=types.Content(role="model", parts=[types.Part(text=text)]))]
+def _chain(tmp_path, outcomes: dict, keys=("gemini", "openai", "claude")) -> tuple[ModelChain, list[str]]:
+    ai = replace(
+        _settings(tmp_path).ai,
+        models=tuple(outcomes),
+        api_keys=tuple((p, "k") for p in keys),
     )
+    calls: list[str] = []
+    chain = ModelChain(ai, lambda provider, _settings: FakeBackend(provider, outcomes, calls))
+    return chain, calls
 
 
-@pytest.mark.parametrize("error", [AiRateLimited("429"), AiUnavailable("503 UNAVAILABLE")])
-def test_fallback_model_on_limit_or_overload(tmp_path, error) -> None:
-    provider, calls = _provider(tmp_path, {"main": error, "lite": _text_resp("ответ запасной")})
-    reply = asyncio.run(provider.reply("system", []))
+@pytest.mark.parametrize("error", [AiRateLimited("429"), AiUnavailable("503 UNAVAILABLE"), AiError("400 bad request")])
+def test_fallback_model_on_error(tmp_path, error) -> None:
+    chain, calls = _chain(tmp_path, {"gemini:main": error, "gemini:lite": AiReply(text="ответ запасной")})
+    reply = asyncio.run(chain.reply("system", []))
     assert reply.text == "ответ запасной"
-    assert calls == ["main", "lite"]
+    assert calls == ["gemini:main", "gemini:lite"]
 
 
-def test_fallback_not_used_for_other_errors(tmp_path) -> None:
-    provider, calls = _provider(tmp_path, {"main": AiError("400 bad request"), "lite": _text_resp("x")})
-    with pytest.raises(AiError):
-        asyncio.run(provider.reply("system", []))
-    assert calls == ["main"]
+def test_fallback_to_other_provider(tmp_path) -> None:
+    chain, calls = _chain(
+        tmp_path,
+        {
+            "claude:claude-sonnet-5-5": AiUnavailable("529 overloaded"),
+            "openai:gpt-6-luna": AiRateLimited("429"),
+            "gemini:gemini-2.5-flash": AiReply(text="ответ gemini"),
+        },
+    )
+    assert asyncio.run(chain.reply("system", [])).text == "ответ gemini"
+    assert calls == ["claude:claude-sonnet-5-5", "openai:gpt-6-luna", "gemini:gemini-2.5-flash"]
 
 
-def test_both_models_limited_raises_rate_limited(tmp_path) -> None:
-    provider, calls = _provider(tmp_path, {"main": AiRateLimited("429"), "lite": AiRateLimited("429")})
+def test_models_without_key_are_skipped(tmp_path) -> None:
+    chain, calls = _chain(
+        tmp_path,
+        {"openai:gpt-6-luna": AiReply(text="x"), "claude:claude-haiku-4-5": AiReply(text="ответ claude")},
+        keys=("claude",),
+    )
+    assert asyncio.run(chain.reply("system", [])).text == "ответ claude"
+    assert calls == ["claude:claude-haiku-4-5"]
+
+
+def test_all_models_limited_raises_rate_limited(tmp_path) -> None:
+    chain, calls = _chain(tmp_path, {"gemini:main": AiRateLimited("429"), "gemini:lite": AiRateLimited("429")})
     with pytest.raises(AiRateLimited):
-        asyncio.run(provider.reply("system", []))
-    assert calls == ["main", "lite"]
+        asyncio.run(chain.reply("system", []))
+    assert calls == ["gemini:main", "gemini:lite"]
 
 
-def test_fallback_same_as_main_is_skipped(tmp_path) -> None:
-    ai = replace(_settings(tmp_path).ai, model="main", fallback_model="main")
-    assert GeminiProvider(ai)._models == ["main"]
+def test_set_models_reorders_and_validates(tmp_path) -> None:
+    chain, calls = _chain(
+        tmp_path, {"gemini:a": AiReply(text="a"), "claude:b": AiReply(text="b")}, keys=("gemini", "claude")
+    )
+    chain.set_models(("claude:b", "gemini:a", "claude:b"))
+    assert chain.models == ("claude:b", "gemini:a")
+    assert asyncio.run(chain.reply("system", [])).text == "b"
+    with pytest.raises(ValueError):
+        chain.set_models(())
+    with pytest.raises(ValueError):
+        chain.set_models(("openai:gpt-6-luna",))  # нет ключа
+    assert chain.models == ("claude:b", "gemini:a")

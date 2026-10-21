@@ -5,3 +5,5 @@ greenlet>=3.0
 PyYAML==6.0.2
 aiohttp>=3.9.0
 google-genai==2.8.0
+anthropic==1.17.0
+openai==3.35.1

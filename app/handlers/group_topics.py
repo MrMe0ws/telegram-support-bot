@@ -14,7 +14,7 @@ from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import topic_status
 from app.services import shop_webhook as shop_webhook_svc
 from app.services import tickets as ticket_svc
-from app.services.ai.service import get_ai_service
+from app.services.ai.service import get_ai_service, peek_ai_service
 from app.services.remnawave_client import RemnawaveApiError, RemnawaveClient
 from app.services.remnawave_profile import format_remnawave_profile_block
 from app.services.ticket_flow import close_ticket_by_id
@@ -374,7 +374,8 @@ async def staff_reply(
 
     # Сотрудник ответил сам: в режиме auto ИИ в этом тикете замолкает, чтобы не
     # говорить поверх человека (вернуть — /ai on); в draft снимается черновик.
-    ai = get_ai_service()
+    # peek: и при выключенном ИИ — чтобы после включения он не заговорил поверх человека.
+    ai = peek_ai_service()
     if ai is not None and replied_ticket_id is not None:
         await ai.pause_by_staff(replied_ticket_id)
     if replied_ticket_id is not None:

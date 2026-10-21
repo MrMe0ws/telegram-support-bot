@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass
 
@@ -46,18 +47,84 @@ class RemnawaveSettings:
 
 AI_MODES = ("auto", "draft")
 
+# Провайдеры ИИ и модель по умолчанию для каждого.
+AI_PROVIDERS = ("gemini", "openai", "claude")
+AI_PROVIDER_ALIASES = {"google": "gemini", "chatgpt": "openai", "gpt": "openai", "anthropic": "claude"}
+AI_DEFAULT_MODELS = {
+    "gemini": "gemini-2.5-flash",
+    "openai": "gpt-6-luna",
+    "claude": "claude-opus-5-5",
+}
+
+
+def normalize_ai_provider(raw: str) -> str:
+    p = raw.strip().lower()
+    return AI_PROVIDER_ALIASES.get(p, p)
+
+
+def guess_ai_provider(model: str) -> str | None:
+    """Провайдер по имени модели: gemini-… → gemini, claude-… → claude, gpt-… / o3 → openai."""
+    m = model.strip().lower()
+    if m.startswith("gemini") or m.startswith("gemma"):
+        return "gemini"
+    if m.startswith("claude"):
+        return "claude"
+    if m.startswith(("gpt", "chatgpt", "o1", "o3", "o4")):
+        return "openai"
+    return None
+
+
+def parse_ai_model(raw: str, default_provider: str) -> str:
+    """
+    Одна модель из настроек → «провайдер:модель».
+
+    Провайдер можно указать явно (claude:claude-sonnet-5-5), иначе он угадывается
+    по имени модели, а если не угадался — берётся default_provider.
+    Неизвестный провайдер — ValueError.
+    """
+    s = raw.strip()
+    if not s:
+        raise ValueError("пустое имя модели")
+    if ":" in s:
+        head, tail = s.split(":", 1)
+        provider = normalize_ai_provider(head)
+        if provider in AI_PROVIDERS:
+            model = tail.strip()
+            if not model:
+                raise ValueError(f"не указана модель: {s!r}")
+            return f"{provider}:{model}"
+        if guess_ai_provider(s) is None:
+            raise ValueError(f"неизвестный провайдер {head.strip()!r} (доступно: {', '.join(AI_PROVIDERS)})")
+    return f"{guess_ai_provider(s) or default_provider}:{s}"
+
+
+def parse_ai_models(raw: str, default_provider: str) -> tuple[str, ...]:
+    """Список моделей через запятую → «провайдер:модель» без повторов, порядок сохраняется."""
+    out: list[str] = []
+    for part in raw.split(","):
+        if not part.strip():
+            continue
+        spec = parse_ai_model(part, default_provider)
+        if spec not in out:
+            out.append(spec)
+    return tuple(out)
+
 
 @dataclass(frozen=True)
 class AiSettings:
-    """ИИ-ответы клиентам. Всё — из .env, без переключателей в боте."""
+    """ИИ-ответы клиентам. Значения — из .env; большую часть админ может поменять в боте (⚙️ Настройки)."""
 
     enabled: bool
     # auto — ИИ отвечает клиенту сам; draft — готовит черновик в тему, отправляет админ.
     mode: str
+    # Провайдер для моделей, у которых его не видно по имени.
     provider: str
-    api_key: str
-    model: str
-    # Прокси до API провайдера (из РФ Gemini напрямую недоступен), напр. http://user:pass@host:port.
+    # Цепочка «провайдер:модель»: первая — основная, остальные — резервные по порядку.
+    # На следующую бот переходит, если предыдущая не ответила (лимит, сбой, нет связи).
+    models: tuple[str, ...]
+    # Ключи API по провайдерам; модели провайдера без ключа пропускаются.
+    api_keys: tuple[tuple[str, str], ...]
+    # Прокси до API провайдеров (из РФ они напрямую недоступны), напр. http://user:pass@host:port.
     proxy_url: str
     # Сколько ждать тишины после сообщения клиента, прежде чем отвечать: клиент часто
     # пишет несколькими сообщениями подряд.
@@ -75,13 +142,21 @@ class AiSettings:
     # С какого по счёту ответа ИИ в тикете показывать клиенту кнопку «Позвать человека»;
     # 0 — не показывать (позвать человека клиент может и словами).
     human_button_from: int = 1
-    # Запасная модель: на неё бот переключается, если основная упёрлась в лимит
-    # запросов или перегружена. Пусто — без запасной.
-    fallback_model: str = ""
+
+    def api_key(self, provider: str) -> str:
+        return dict(self.api_keys).get(provider, "")
+
+    def has_key(self, spec: str) -> bool:
+        return bool(self.api_key(spec.split(":", 1)[0]))
+
+    @property
+    def is_configured(self) -> bool:
+        """Есть модель с ключом API — ИИ можно включить (в .env или в боте)."""
+        return any(self.has_key(m) for m in self.models)
 
     @property
     def is_active(self) -> bool:
-        return self.enabled and bool(self.api_key) and bool(self.model)
+        return self.enabled and self.is_configured
 
 
 def _env_int(key: str, default: int, lo: int, hi: int) -> int:
@@ -100,16 +175,50 @@ def _env_float(key: str, default: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def _ai_models_from_env(provider: str) -> tuple[str, ...]:
+    main = os.environ.get("AI_MODEL", "").strip() or AI_DEFAULT_MODELS[provider]
+    fallback = os.environ.get("AI_FALLBACK_MODELS")
+    if fallback is None:
+        # Старое имя переменной; без неё у Gemini по умолчанию есть запасная модель.
+        fallback = os.environ.get("AI_FALLBACK_MODEL")
+    if fallback is None:
+        fallback = "gemini-3.5-flash-lite" if provider == "gemini" else ""
+    out: list[str] = []
+    for part in f"{main},{fallback}".split(","):
+        if not part.strip():
+            continue
+        try:
+            spec = parse_ai_model(part, provider)
+        except ValueError as e:
+            logging.getLogger(__name__).warning("ИИ: модель %r пропущена: %s", part.strip(), e)
+            continue
+        if spec not in out:
+            out.append(spec)
+    return tuple(out)
+
+
 def _ai_from_env() -> AiSettings:
     mode = os.environ.get("AI_MODE", "auto").strip().lower()
     if mode not in AI_MODES:
         mode = "auto"
+    provider = normalize_ai_provider(os.environ.get("AI_PROVIDER", "") or "gemini")
+    if provider not in AI_PROVIDERS:
+        logging.getLogger(__name__).warning("AI_PROVIDER=%r не поддерживается — беру gemini", provider)
+        provider = "gemini"
+    keys = {
+        "gemini": os.environ.get("GEMINI_API_KEY", "").strip(),
+        "openai": os.environ.get("OPENAI_API_KEY", "").strip(),
+        "claude": os.environ.get("ANTHROPIC_API_KEY", "").strip(),
+    }
+    # AI_API_KEY — общий ключ из прошлых версий: он для провайдера из AI_PROVIDER.
+    if not keys[provider]:
+        keys[provider] = os.environ.get("AI_API_KEY", "").strip()
     return AiSettings(
         enabled=_env_bool("AI_ENABLED", False),
         mode=mode,
-        provider=os.environ.get("AI_PROVIDER", "gemini").strip().lower() or "gemini",
-        api_key=os.environ.get("AI_API_KEY", "").strip(),
-        model=os.environ.get("AI_MODEL", "gemini-2.5-flash").strip(),
+        provider=provider,
+        models=_ai_models_from_env(provider),
+        api_keys=tuple((p, k) for p, k in keys.items() if k),
         proxy_url=os.environ.get("AI_PROXY_URL", "").strip(),
         reply_delay_sec=_env_float("AI_REPLY_DELAY_SEC", 20.0, 0.0, 120.0),
         knowledge_dir=os.environ.get("AI_KNOWLEDGE_DIR", "knowledge").strip() or "knowledge",
@@ -121,7 +230,6 @@ def _ai_from_env() -> AiSettings:
         # Telegram отдаёт ботам файлы не больше 20 МБ.
         media_max_mb=_env_int("AI_MEDIA_MAX_MB", 10, 1, 20),
         human_button_from=_env_int("AI_HUMAN_BUTTON_FROM", 1, 0, 1000),
-        fallback_model=os.environ.get("AI_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip(),
     )
 
 
