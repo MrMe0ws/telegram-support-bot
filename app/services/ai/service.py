@@ -30,6 +30,7 @@ from app.services.remnawave_client import RemnawaveClient
 log = logging.getLogger(__name__)
 
 # Telegram держит «печатает…» около 5 секунд — обновляем чуть чаще.
+# Магазин держит статус кабинета 12 секунд, тот же шаг ему с запасом.
 _TYPING_EVERY_SEC = 4.5
 
 # Модели уходят вложения только из последних сообщений клиента: старые она уже
@@ -110,7 +111,7 @@ class AiService:
 
     На каждое сообщение клиента сдвигается срок ответа по тикету: клиент часто
     пишет несколькими сообщениями, и отвечать надо на все разом. Пока идёт
-    ожидание и думает модель, клиент в Telegram видит «печатает…».
+    ожидание и думает модель, клиент в Telegram и в кабинете видит «печатает…».
 
     Задачу ответа никогда не отменяем снаружи: отмена посреди запроса к SQLite
     оставляла брошенное соединение с блокировкой, и следующая запись ждала её
@@ -185,10 +186,14 @@ class AiService:
         if task is not None:
             task.cancel()
 
-    async def _typing(self, chat_id: int) -> None:
+    async def _typing(self, snap: _TicketSnapshot) -> None:
+        ticket = Ticket(id=snap.id, user_id=snap.user_id, external_uid=snap.external_uid)
         while True:
             with contextlib.suppress(Exception):
-                await self._bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                if snap.is_cabinet:
+                    await shop_webhook_svc.notify_typing(self._settings, ticket)
+                else:
+                    await self._bot.send_chat_action(chat_id=snap.user_id, action=ChatAction.TYPING)
             await asyncio.sleep(_TYPING_EVERY_SEC)
 
     async def _wait_quiet(self, ticket_id: int) -> float | None:
@@ -215,8 +220,8 @@ class AiService:
                 return
             # В режиме черновиков клиенту ничего не пишется сразу — и «печатает…»
             # висело бы зря, пока админ не дойдёт до темы.
-            if self.mode == "auto" and snap.is_telegram:
-                self._typing_tasks[ticket_id] = asyncio.create_task(self._typing(snap.user_id))
+            if self.mode == "auto" and (snap.is_telegram or snap.is_cabinet):
+                self._typing_tasks[ticket_id] = asyncio.create_task(self._typing(snap))
 
             # Скачанные вложения по file_id: при повторном круге не качаем заново.
             media_cache: dict[str, Media | None] = {}

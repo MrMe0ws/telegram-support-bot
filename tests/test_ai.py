@@ -15,6 +15,7 @@ from app.config import AiSettings, RemnawaveSettings, Settings  # noqa: E402
 from app.db.models import AiDraft, MessageSource, StoredMessage, Ticket  # noqa: E402
 from app.db.session import create_engine, init_db, session_factory  # noqa: E402
 from app.services import reaction_bridge as reaction_bridge_svc  # noqa: E402
+from app.services import shop_webhook as shop_webhook_svc  # noqa: E402
 from app.services import tickets as ticket_svc  # noqa: E402
 from app.services.ai.knowledge import KnowledgeLoader  # noqa: E402
 from app.services.ai.prompt import AI_NOTE, Turn, build_turns  # noqa: E402
@@ -190,7 +191,9 @@ def _settings(tmp_path, mode: str = "auto", delay: float = 0.05) -> Settings:
     )
 
 
-async def _setup(tmp_path, reply: AiReply, mode: str = "auto"):
+async def _setup(
+    tmp_path, reply: AiReply, mode: str = "auto", source: str = MessageSource.telegram.value,
+):
     engine = create_engine(f"sqlite+aiosqlite:///{tmp_path / 'db.sqlite'}")
     await init_db(engine)
     sf = session_factory(engine)
@@ -198,7 +201,8 @@ async def _setup(tmp_path, reply: AiReply, mode: str = "auto"):
         async with session.begin():
             t = await ticket_svc.create_ticket(
                 session, user_id=CLIENT_ID, forum_chat_id=GROUP_ID, thread_id=7,
-                source=MessageSource.telegram.value,
+                source=source,
+                external_uid="shop:42" if source == MessageSource.cabinet.value else None,
             )
             ticket_id = t.id
     bot = FakeBot()
@@ -246,6 +250,36 @@ def test_auto_reply_debounced_and_recorded(tmp_path) -> None:
         async with sf() as session:
             rows = (await session.execute(StoredMessage.__table__.select())).fetchall()
         assert [r.raw_note for r in rows if r.direction == "out"] == [AI_NOTE]
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_cabinet_sees_typing_until_ai_replies(tmp_path, monkeypatch) -> None:
+    events: list[str] = []
+
+    async def fake_typing(settings, ticket):
+        assert shop_webhook_svc.shop_ticket_id(ticket) == 42
+        events.append("typing")
+
+    async def fake_reply(settings, ticket, **kw):
+        events.append("reply")
+
+    monkeypatch.setattr(shop_webhook_svc, "notify_typing", fake_typing)
+    monkeypatch.setattr(shop_webhook_svc, "deliver_staff_reply", fake_reply)
+
+    async def scenario():
+        svc, sf, bot, provider, tid, engine = await _setup(
+            tmp_path, AiReply(text="Ответ"), source=MessageSource.cabinet.value,
+        )
+        await _client_says(sf, tid, "не работает")
+        svc.schedule(tid)
+        await _wait(svc)
+
+        # «Печатает…» уходит в магазин, а не chat action в Telegram, и не после ответа.
+        assert bot.typing == 0
+        assert events[0] == "typing" and events[-1] == "reply"
+        assert events.count("reply") == 1
         await engine.dispose()
 
     asyncio.run(scenario())

@@ -51,6 +51,21 @@ async def notify_ticket_closed(settings: Settings, ticket: Ticket) -> None:
     await _post_webhook(settings, payload)
 
 
+async def notify_typing(settings: Settings, ticket: Ticket) -> None:
+    """ИИ готовит ответ — кабинет покажет «печатает…». Магазин держит статус несколько
+    секунд, поэтому, как и chat action в Telegram, его надо повторять."""
+    if not _webhook_configured(settings):
+        return
+    payload = {
+        "event": "typing",
+        "account_id": ticket.user_id,
+        "shop_ticket_id": _shop_ticket_id(ticket),
+        "support_bot_ticket_id": ticket.id,
+    }
+    # Старый магазин событие не знает и отвечает 400 — не засоряем лог каждые 5 секунд.
+    await _post_webhook(settings, payload, quiet=True)
+
+
 def shop_ticket_id(ticket: Ticket) -> int:
     if ticket.external_uid and ticket.external_uid.startswith("shop:"):
         try:
@@ -64,11 +79,12 @@ def _shop_ticket_id(ticket: Ticket) -> int:
     return shop_ticket_id(ticket)
 
 
-async def _post_webhook(settings: Settings, payload: dict) -> None:
+async def _post_webhook(settings: Settings, payload: dict, *, quiet: bool = False) -> None:
     headers = {
         "Authorization": f"Bearer {settings.support_bridge_secret}",
         "Content-Type": "application/json",
     }
+    warn = log.debug if quiet else log.warning
     timeout = aiohttp.ClientTimeout(total=15)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -79,14 +95,14 @@ async def _post_webhook(settings: Settings, payload: dict) -> None:
             ) as resp:
                 body = await resp.text()
                 if resp.status < 200 or resp.status >= 300:
-                    log.warning(
+                    warn(
                         "shop webhook failed status=%s body=%s payload_event=%s",
                         resp.status,
                         body[:500],
                         payload.get("event"),
                     )
     except Exception as e:
-        log.warning("shop webhook request failed: %s", e)
+        warn("shop webhook request failed: %s", e)
 
 
 def format_staff_author(message) -> str:
