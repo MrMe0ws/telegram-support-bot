@@ -21,7 +21,7 @@ def test_parse_remnawave_user_from_response_wrapper() -> None:
             "tag": "TG_TAG",
             "shortUuid": "DSuahCNj_vvXH795",
             "telegramId": 8157396837,
-            "subscriptionUrl": "https://sub.me0ws.ru/DSuahCNj_vvXH795",
+            "subscriptionUrl": "https://sub.me0ws.store/DSuahCNj_vvXH795",
             "activeInternalSquads": [{"uuid": "x", "name": "Default-Squad"}],
             "userTraffic": {"usedTrafficBytes": 0, "onlineAt": None},
         },
@@ -33,7 +33,7 @@ def test_parse_remnawave_user_from_response_wrapper() -> None:
     assert user.status == "EXPIRED"
     assert user.used_traffic_bytes == 0
     assert user.traffic_limit_bytes == 214748364800
-    assert user.subscription_url == "https://sub.me0ws.ru/DSuahCNj_vvXH795"
+    assert user.subscription_url == "https://sub.me0ws.store/DSuahCNj_vvXH795"
 
     nested = {"response": {"user": raw["response"]}}
     assert _unwrap_user_payload(nested) is not None
