@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import BlockedUser, MessageSource, StoredMessage, Ticket, TicketStatus
@@ -161,6 +161,7 @@ async def record_message(
     telegram_message_id: int | None,
     raw_note: str | None = None,
     client_message_id: str | None = None,
+    attachment_meta: str | None = None,
 ) -> StoredMessage:
     msg = StoredMessage(
         ticket_id=ticket_id,
@@ -171,7 +172,62 @@ async def record_message(
         telegram_message_id=telegram_message_id,
         raw_note=raw_note,
         client_message_id=client_message_id,
+        attachment_meta=attachment_meta,
     )
     session.add(msg)
     await session.flush()
     return msg
+
+
+async def update_message_media(
+    session: AsyncSession,
+    message_id: int,
+    *,
+    content_type: str,
+    telegram_file_id: str,
+    telegram_message_id: int,
+    attachment_meta: str,
+) -> None:
+    """Вложение кабинета ушло в тему: теперь известны file_id и сообщение в Telegram."""
+    await session.execute(
+        update(StoredMessage)
+        .where(StoredMessage.id == message_id)
+        .values(
+            content_type=content_type,
+            telegram_file_id=telegram_file_id,
+            telegram_message_id=telegram_message_id,
+            attachment_meta=attachment_meta,
+        )
+    )
+
+
+async def delete_messages(session: AsyncSession, message_ids: list[int]) -> None:
+    if message_ids:
+        await session.execute(delete(StoredMessage).where(StoredMessage.id.in_(message_ids)))
+
+
+async def list_messages_by_note(
+    session: AsyncSession,
+    ticket_id: int,
+    raw_note: str,
+) -> list[StoredMessage]:
+    """Строки одного сообщения кабинета с вложениями — их связывает общий raw_note."""
+    q = await session.execute(
+        select(StoredMessage)
+        .where(StoredMessage.ticket_id == ticket_id, StoredMessage.raw_note == raw_note)
+        .order_by(StoredMessage.id)
+    )
+    return list(q.scalars().all())
+
+
+async def get_message_with_ticket(
+    session: AsyncSession,
+    message_id: int,
+) -> tuple[StoredMessage, Ticket] | None:
+    q = await session.execute(
+        select(StoredMessage, Ticket)
+        .join(Ticket, Ticket.id == StoredMessage.ticket_id)
+        .where(StoredMessage.id == message_id)
+    )
+    row = q.first()
+    return (row[0], row[1]) if row else None

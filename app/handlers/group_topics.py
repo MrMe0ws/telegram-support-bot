@@ -10,6 +10,7 @@ from aiogram.types import Message
 
 from app.db.models import MessageSource
 from app.i18n import tr
+from app.services import cabinet_media
 from app.services import reaction_bridge as reaction_bridge_svc
 from app.services import topic_status
 from app.services import shop_webhook as shop_webhook_svc
@@ -350,7 +351,11 @@ async def staff_reply(
             elif message.sticker:
                 fid = message.sticker.file_id
 
-            await ticket_svc.record_message(
+            is_cabinet = ticket.source == MessageSource.cabinet.value
+            # Картинку сотрудника кабинет покажет сам: фото или изображение файлом.
+            attachment = cabinet_media.staff_attachment(message) if is_cabinet else None
+
+            row = await ticket_svc.record_message(
                 session,
                 ticket_id=ticket.id,
                 direction="out",
@@ -358,17 +363,20 @@ async def staff_reply(
                 text=text,
                 telegram_file_id=fid,
                 telegram_message_id=message.message_id,
+                attachment_meta=attachment.to_json() if attachment else None,
             )
 
-            if ticket.source == MessageSource.cabinet.value:
-                if not text:
+            if is_cabinet:
+                attachments = [attachment.to_api(row.id)] if attachment else []
+                if not text and not attachments:
                     text = tr("group", "support_reply_fallback")
                 await shop_webhook_svc.deliver_staff_reply(
                     settings,
                     ticket,
-                    text=text,
+                    text=text or "",
                     author_label="Поддержка",
                     support_bot_message_id=message.message_id,
+                    attachments=attachments,
                 )
                 sent_to_cabinet = True
 

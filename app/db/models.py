@@ -109,6 +109,8 @@ class StoredMessage(Base):
     client_message_id: Mapped[str | None] = mapped_column(
         String(36), unique=True, nullable=True, index=True
     )  # UUID idempotency key от shop
+    # Вложение тикета кабинета: JSON {mime, width, height, size, name} (см. cabinet_media).
+    attachment_meta: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     ticket: Mapped["Ticket"] = relationship(back_populates="messages")

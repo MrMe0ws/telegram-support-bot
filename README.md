@@ -157,9 +157,26 @@ Telegram DM в этом боте — без изменений (source=telegram)
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| `POST` | `/internal/cabinet/message` | Принять сообщение из shop; заголовок `Authorization: Bearer <SUPPORT_BRIDGE_SECRET>` |
+| `POST` | `/internal/cabinet/message` | Принять сообщение из shop (текст и изображения) |
+| `GET` | `/internal/cabinet/file/{id}?account_id=` | Отдать изображение из тикета кабинета (клиента или сотрудника) |
 
-Тело запроса (JSON): `account_id`, `shop_ticket_id`, `text`, `display_name`, `telegram_label`, `email`, `subscription_summary`, `is_new_ticket`, опционально **`client_message_id`** (UUID, idempotency — колонка `messages.client_message_id`, миграция при старте в `app/db/session.py`).
+Оба запроса — с заголовком `Authorization: Bearer <SUPPORT_BRIDGE_SECRET>`.
+
+Тело `POST` — JSON или `multipart/form-data`:
+
+- **JSON**: `account_id`, `shop_ticket_id`, `text`, `display_name`, `telegram_label`, `email`, `subscription_summary`, `is_new_ticket`, опционально **`client_message_id`** (UUID, idempotency — колонка `messages.client_message_id`, миграция при старте в `app/db/session.py`).
+- **multipart**: часть `payload` — тот же JSON (`text` может быть пустым), части `files` — до 5 изображений, до 10 МБ каждое и до 25 МБ вместе.
+
+Форматы — те же, что клиент шлёт боту в Telegram; тип определяется по содержимому файла, не по имени:
+
+| Формат | Как уходит в тему |
+|--------|-------------------|
+| JPEG, PNG, WebP, BMP | фото (Telegram пережимает); не принял — файлом |
+| GIF, HEIC/HEIF, AVIF, TIFF | файлом, в исходном виде |
+
+Ответ: `support_bot_ticket_id`, `thread_id`, `attachments` — `[{id, mime, width?, height?, size?, name?}]`; по `id` файл скачивается через `GET /internal/cabinet/file/{id}`. Текст обращения — подписью к первому вложению, если влезает в 1024 символа, иначе отдельным сообщением перед ними; несколько фото — альбомом.
+
+Ответ сотрудника фото или картинкой файлом (скриншот «без сжатия») уходит в webhook с полем `attachments`, `text` при этом может быть пустым. Видео, голосовые и стикеры в кабинет не передаются — вместо них текст-заглушка.
 
 ### Переменные окружения
 
@@ -195,11 +212,11 @@ HTTP_PORT=8080
 
 ### Ограничения MVP
 
-- Из кабинета принимается только **текст**.
-- **Медиа** от саппорта в кабинет **не доставляются**.
+- Из кабинета принимаются **текст и изображения**; другие файлы — нет.
+- От саппорта в кабинет доходят **текст и изображения**; видео, голосовые и стикеры — нет.
 - **Один open-тикет** на `account_id` (на стороне shop).
 
-**Код:** `app/http/server.py`, `app/services/cabinet_bridge.py`, `app/services/shop_webhook.py`, `app/handlers/group_topics.py` (ответы и `/close` для `source=cabinet`).
+**Код:** `app/http/server.py`, `app/services/cabinet_bridge.py`, `app/services/cabinet_media.py` (форматы и вложения), `app/services/cabinet_files.py` (отдача файлов), `app/services/shop_webhook.py`, `app/handlers/group_topics.py` (ответы и `/close` для `source=cabinet`).
 
 ---
 
@@ -341,7 +358,7 @@ app/
   states.py            # FSM-состояния (админка, настройки, сценарий обращения)
   db/                  # модели SQLAlchemy, сессия
   handlers/            # роутеры aiogram: private_chat, admin_panel, group_topics, help_callbacks, message_reactions, ai_callbacks
-  http/                # aiohttp sidecar: POST /internal/cabinet/message (bridge к shop)
+  http/                # aiohttp sidecar: сообщения и файлы кабинета (bridge к shop)
   keyboards/           # инлайн-клавиатуры (тексты из YAML)
   services/            # тикеты, «Помощь», настройки из бота (live_settings), реакции, cabinet_bridge, shop_webhook, remnawave_client, remnawave_profile, topic_status
   services/ai/         # ИИ-ответы: база знаний, промпт, модели (providers/: Gemini, OpenAI, Claude), вложения, очередь ответов

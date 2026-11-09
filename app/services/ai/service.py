@@ -309,7 +309,7 @@ class AiService:
         self, snap: _TicketSnapshot, messages: list, cache: dict[str, Media | None]
     ) -> dict[int, Media]:
         """Вложения последних сообщений клиента, которые модель увидит сама (по id сообщения)."""
-        if not self._ai.media_enabled or not snap.is_telegram:
+        if not self._ai.media_enabled or not (snap.is_telegram or snap.is_cabinet):
             return {}
         candidates = [
             m

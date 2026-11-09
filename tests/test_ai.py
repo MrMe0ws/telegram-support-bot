@@ -546,6 +546,44 @@ def test_photo_and_voice_reach_model(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_cabinet_screenshot_reaches_model(tmp_path, monkeypatch) -> None:
+    replies: list[str] = []
+
+    async def fake_typing(settings, ticket):
+        pass
+
+    async def fake_reply(settings, ticket, *, text, **kw):
+        replies.append(text)
+
+    monkeypatch.setattr(shop_webhook_svc, "notify_typing", fake_typing)
+    monkeypatch.setattr(shop_webhook_svc, "deliver_staff_reply", fake_reply)
+
+    async def scenario():
+        svc, sf, bot, provider, tid, engine = await _setup(
+            tmp_path, AiReply(text="вижу ошибку"), source=MessageSource.cabinet.value,
+        )
+        # Скриншоты из кабинета: фото и HEIC файлом (см. cabinet_bridge).
+        bot.files = {
+            "ph": ("photos/file_1.jpg", b"jpeg-bytes"),
+            "heic": ("documents/file_2.heic", b"heic-bytes"),
+        }
+        await _client_sends(sf, tid, "photo", "ph", text="вот скрин")
+        await _client_sends(sf, tid, "document", "heic")
+        svc.schedule(tid)
+        await _wait(svc)
+
+        turn = provider.calls[0][-1]
+        assert [(m.mime_type, m.data) for m in turn.media] == [
+            ("image/jpeg", b"jpeg-bytes"),
+            ("image/heic", b"heic-bytes"),
+        ]
+        assert "[клиент прислал фото — см. вложение] вот скрин" in turn.text
+        assert replies == ["вижу ошибку"]
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_oversized_and_unknown_files_are_not_sent(tmp_path) -> None:
     async def scenario():
         svc, sf, bot, provider, tid, engine = await _setup(tmp_path, AiReply(text="ок"))

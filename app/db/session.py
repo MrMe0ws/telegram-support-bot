@@ -48,6 +48,10 @@ async def _ensure_migrations(conn) -> None:
             await conn.execute(
                 text("ALTER TABLE messages ADD COLUMN client_message_id VARCHAR(36)")
             )
+        if not await _table_has_column(conn, "messages", "attachment_meta"):
+            await conn.execute(
+                text("ALTER TABLE messages ADD COLUMN attachment_meta TEXT")
+            )
         await conn.execute(
             text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS ix_messages_client_message_id "

@@ -22,7 +22,10 @@ async def deliver_staff_reply(
     text: str,
     author_label: str,
     support_bot_message_id: int,
+    attachments: list[dict] | None = None,
 ) -> None:
+    """Ответ в чат кабинета. attachments — изображения (AttachmentMeta.to_api): кабинет
+    скачает их через GET /internal/cabinet/file/{id}; text при них может быть пустым."""
     if not _webhook_configured(settings):
         log.warning("cabinet webhook not configured; staff reply not delivered")
         return
@@ -36,6 +39,8 @@ async def deliver_staff_reply(
         "text": text,
         "author_label": author_label,
     }
+    if attachments:
+        payload["attachments"] = attachments
     await _post_webhook(settings, payload)
 
 
@@ -128,9 +133,13 @@ def format_cabinet_first_message(
         f"📧 Email: {escape(email or '—')}\n"
         f"📦 Подписка: {escape(subscription_summary or 'нет данных')}\n"
         "💬 Вопрос:\n"
-        f"{escape(question)}"
+        f"{escape(question or '📎 без текста — см. вложения')}"
     )
 
 
 def format_cabinet_followup(*, display_name: str, text: str) -> str:
-    return f"💬 {escape(display_name or 'Пользователь')}: {escape(text)}"
+    name = escape(display_name or "Пользователь")
+    if not text:
+        # Только вложения — подпись к ним без висящего двоеточия.
+        return f"📎 {name}"
+    return f"💬 {name}: {escape(text)}"
