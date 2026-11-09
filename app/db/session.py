@@ -64,6 +64,14 @@ async def _ensure_migrations(conn) -> None:
             await conn.execute(
                 text("ALTER TABLE tickets ADD COLUMN linked_telegram_id BIGINT")
             )
+        if not await _table_has_column(conn, "tickets", "linked_customer_id"):
+            await conn.execute(
+                text("ALTER TABLE tickets ADD COLUMN linked_customer_id BIGINT")
+            )
+        if not await _table_has_column(conn, "tickets", "remnawave_user_id"):
+            await conn.execute(
+                text("ALTER TABLE tickets ADD COLUMN remnawave_user_id BIGINT")
+            )
         if not await _table_has_column(conn, "tickets", "ai_paused"):
             await conn.execute(
                 text("ALTER TABLE tickets ADD COLUMN ai_paused BOOLEAN NOT NULL DEFAULT FALSE")

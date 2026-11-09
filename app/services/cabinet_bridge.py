@@ -140,6 +140,8 @@ async def post_cabinet_message(
     subscription_summary: str,
     text: str,
     telegram_id: int | None = None,
+    customer_id: int | None = None,
+    remnawave_user_id: int | None = None,
     files: Sequence[CabinetUpload] = (),
 ) -> dict:
     uid = account_id
@@ -232,12 +234,13 @@ async def post_cabinet_message(
 
                 ticket_id = ticket.id
 
-                if telegram_id and telegram_id > 0:
-                    await ticket_svc.update_ticket_linked_telegram_id(
-                        session,
-                        ticket_id,
-                        telegram_id,
-                    )
+                await ticket_svc.update_ticket_cabinet_links(
+                    session,
+                    ticket_id,
+                    telegram_id=telegram_id,
+                    customer_id=customer_id,
+                    remnawave_user_id=remnawave_user_id,
+                )
 
                 if created_new or is_new_ticket:
                     body = shop_webhook_svc.format_cabinet_first_message(

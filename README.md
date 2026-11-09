@@ -164,7 +164,7 @@ Telegram DM в этом боте — без изменений (source=telegram)
 
 Тело `POST` — JSON или `multipart/form-data`:
 
-- **JSON**: `account_id`, `shop_ticket_id`, `text`, `display_name`, `telegram_label`, `email`, `subscription_summary`, `is_new_ticket`, опционально **`client_message_id`** (UUID, idempotency — колонка `messages.client_message_id`, миграция при старте в `app/db/session.py`).
+- **JSON**: `account_id`, `shop_ticket_id`, `text`, `display_name`, `telegram_label`, `email`, `subscription_summary`, `is_new_ticket`, опционально **`client_message_id`** (UUID, idempotency — колонка `messages.client_message_id`, миграция при старте в `app/db/session.py`); опционально `telegram_id`, `customer_id` и `remnawave_user_id` — по ним `/profile` и ИИ находят профиль в Remnawave (у web-only клиента без Telegram — только по `remnawave_user_id`).
 - **multipart**: часть `payload` — тот же JSON (`text` может быть пустым), части `files` — до 5 изображений, до 10 МБ каждое и до 25 МБ вместе.
 
 Форматы — те же, что клиент шлёт боту в Telegram; тип определяется по содержимому файла, не по имени:

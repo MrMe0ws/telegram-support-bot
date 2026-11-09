@@ -102,16 +102,30 @@ async def update_ticket_external_uid(
     )
 
 
-async def update_ticket_linked_telegram_id(
+async def update_ticket_cabinet_links(
     session: AsyncSession,
     ticket_id: int,
-    telegram_id: int | None,
+    *,
+    telegram_id: int | None = None,
+    customer_id: int | None = None,
+    remnawave_user_id: int | None = None,
 ) -> None:
-    await session.execute(
-        update(Ticket)
-        .where(Ticket.id == ticket_id)
-        .values(linked_telegram_id=telegram_id)
-    )
+    """
+    Привязки тикета кабинета из очередного сообщения. Пустые значения не затирают
+    сохранённые: магазин мог не успеть найти профиль в панели именно в этот раз.
+    """
+    values = {
+        column: value
+        for column, value in (
+            ("linked_telegram_id", telegram_id),
+            ("linked_customer_id", customer_id),
+            ("remnawave_user_id", remnawave_user_id),
+        )
+        if value is not None and value > 0
+    }
+    if not values:
+        return
+    await session.execute(update(Ticket).where(Ticket.id == ticket_id).values(**values))
 
 
 async def close_ticket(session: AsyncSession, ticket_id: int) -> None:

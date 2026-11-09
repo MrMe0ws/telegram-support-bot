@@ -60,10 +60,10 @@ def format_remnawave_profile_block(
     user: RemnawaveUser,
     *,
     telegram_username_line: str,
-    telegram_id: int,
+    telegram_id: int | None,
     settings: RemnawaveSettings,
 ) -> str:
-    """HTML-блок подписки Remnawave для /profile (ParseMode.HTML)."""
+    """HTML-блок подписки Remnawave для /profile (ParseMode.HTML). Без Telegram ID — web-only клиент."""
     tz = settings.timezone
     used = _format_gb(user.used_traffic_bytes)
     limit = _format_gb(user.traffic_limit_bytes)
@@ -71,7 +71,7 @@ def format_remnawave_profile_block(
 
     lines = [
         f"👤 {telegram_username_line}",
-        _line("🆔 TG ID", _code(str(telegram_id))),
+        _line("🆔 TG ID", _code(str(telegram_id) if telegram_id else None)),
         _line("⚡️ Статус", _format_status(user.status)),
         "",
         _line("📆 До", _format_dt(user.expire_at, tz)),

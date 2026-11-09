@@ -39,6 +39,10 @@ class Ticket(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     external_uid: Mapped[str | None] = mapped_column(String(255), nullable=True)
     linked_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Тикеты кабинета: клиент магазина и его профиль в Remnawave. У web-only клиента
+    # в панели нет telegramId, и /profile находит его только по remnawave_user_id.
+    linked_customer_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    remnawave_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     source: Mapped[str] = mapped_column(String(32), default=MessageSource.telegram.value)
     status: Mapped[str] = mapped_column(String(16), default=TicketStatus.open.value)
     forum_chat_id: Mapped[int] = mapped_column(BigInteger)

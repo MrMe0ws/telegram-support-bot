@@ -52,6 +52,7 @@ class _TicketSnapshot:
     thread_id: int | None
     external_uid: str | None
     linked_telegram_id: int | None
+    remnawave_user_id: int | None
 
     @property
     def is_telegram(self) -> bool:
@@ -71,6 +72,7 @@ def _snapshot(t: Ticket) -> _TicketSnapshot:
         thread_id=t.thread_id,
         external_uid=t.external_uid,
         linked_telegram_id=t.linked_telegram_id,
+        remnawave_user_id=t.remnawave_user_id,
     )
 
 
@@ -351,10 +353,14 @@ class AiService:
     async def _remnawave_user(self, snap: _TicketSnapshot):
         rw = self._settings.remnawave
         tg_id = snap.user_id if snap.is_telegram else snap.linked_telegram_id
-        if not rw.is_configured or not tg_id:
+        rw_user_id = snap.remnawave_user_id if snap.is_cabinet else None
+        if not rw.is_configured or not (tg_id or rw_user_id):
             return None
         try:
-            return await RemnawaveClient(rw).fetch_user_by_telegram_id(tg_id)
+            return await RemnawaveClient(rw).fetch_user_for_ticket(
+                remnawave_user_id=rw_user_id,
+                telegram_id=tg_id,
+            )
         except Exception as e:
             log.warning("ИИ: подписка клиента не получена (тикет %s): %s", snap.id, e)
             return None

@@ -58,19 +58,29 @@ async def _reply_cabinet_profile(
     ticket,
 ) -> None:
     tg_id = ticket.linked_telegram_id
+    rw_user_id = ticket.remnawave_user_id
     line_u = await _cabinet_profile_line_user(bot, ticket)
     rw = settings.remnawave
 
-    if rw.is_configured and tg_id:
+    shop_tid = shop_webhook_svc.shop_ticket_id(ticket)
+    customer = (
+        f" · customer <code>{ticket.linked_customer_id}</code>"
+        if ticket.linked_customer_id
+        else ""
+    )
+    header = (
+        f"🌐 Кабинет · account <code>{ticket.user_id}</code>{customer}\n"
+        f"Shop ticket: <code>{shop_tid or '—'}</code>"
+    )
+
+    if rw.is_configured and (rw_user_id or tg_id):
         client = RemnawaveClient(rw)
         try:
-            rw_user = await client.fetch_user_by_telegram_id(tg_id)
-        except RemnawaveApiError as e:
-            shop_tid = shop_webhook_svc.shop_ticket_id(ticket)
-            header = (
-                f"🌐 Кабинет · account <code>{ticket.user_id}</code>\n"
-                f"Shop ticket: <code>{shop_tid or '—'}</code>"
+            rw_user = await client.fetch_user_for_ticket(
+                remnawave_user_id=rw_user_id,
+                telegram_id=tg_id,
             )
+        except RemnawaveApiError as e:
             err = tr("callbacks", "profile_remnawave_error", error=escape(str(e)))
             await message.reply(f"{header}\n\n{err}", parse_mode=ParseMode.HTML)
             return
@@ -85,14 +95,12 @@ async def _reply_cabinet_profile(
             await message.reply(body, parse_mode=ParseMode.HTML)
             return
 
-    shop_tid = shop_webhook_svc.shop_ticket_id(ticket)
-    header = (
-        f"🌐 Кабинет · account <code>{ticket.user_id}</code>\n"
-        f"Shop ticket: <code>{shop_tid or '—'}</code>"
-    )
-    if not tg_id:
+    if not tg_id and not rw_user_id:
+        # Web-only клиент: id профиля магазин присылает с каждым сообщением,
+        # у тикетов до обновления он появится после следующего сообщения клиента.
         await message.reply(
-            f"{header}\n\nTelegram не привязан — профиль Remnawave недоступен.",
+            f"{header}\n\nTelegram не привязан, а id профиля Remnawave магазин ещё "
+            "не прислал — он появится после следующего сообщения клиента.",
             parse_mode=ParseMode.HTML,
         )
         return

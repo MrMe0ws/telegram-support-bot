@@ -36,10 +36,13 @@ def _authorized(request: web.Request, settings) -> bool:
     return hmac.compare_digest(token, secret)
 
 
+def _optional_id(raw) -> int | None:
+    return int(raw) if raw not in (None, "", 0) else None
+
+
 def _parse_payload(payload: dict, *, has_files: bool) -> dict:
     """Поля сообщения кабинета — одинаковые для JSON и части payload в multipart."""
     try:
-        telegram_id_raw = payload.get("telegram_id")
         fields = {
             "account_id": int(payload["account_id"]),
             "shop_ticket_id": int(payload["shop_ticket_id"]),
@@ -50,7 +53,9 @@ def _parse_payload(payload: dict, *, has_files: bool) -> dict:
             "email": str(payload.get("email") or "").strip(),
             "subscription_summary": str(payload.get("subscription_summary") or "").strip(),
             "text": str(payload.get("text") or "").strip(),
-            "telegram_id": int(telegram_id_raw) if telegram_id_raw not in (None, "", 0) else None,
+            "telegram_id": _optional_id(payload.get("telegram_id")),
+            "customer_id": _optional_id(payload.get("customer_id")),
+            "remnawave_user_id": _optional_id(payload.get("remnawave_user_id")),
         }
     except (KeyError, TypeError, ValueError, AttributeError):
         raise _BadRequest(400, "invalid payload") from None

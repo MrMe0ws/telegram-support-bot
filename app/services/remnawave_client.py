@@ -386,6 +386,37 @@ class RemnawaveClient:
         )
         return None
 
+    async def fetch_user_for_ticket(
+        self,
+        *,
+        remnawave_user_id: int | None,
+        telegram_id: int | None,
+    ) -> RemnawaveUser | None:
+        """
+        Профиль клиента тикета: по id профиля, если он известен, иначе по Telegram ID.
+
+        id профиля присылает магазин для тикетов кабинета. Без него web-only клиента
+        не найти: telegramId у его профиля пустой, а логин «<customer_id>_<email>»
+        боту неизвестен.
+        """
+        if remnawave_user_id:
+            user = await self.fetch_user_by_id(remnawave_user_id)
+            # Профиль с чужим Telegram ID не показываем: id мог устареть в магазине.
+            owned = (
+                user is not None
+                and _parsed_user_meaningful(user)
+                and (not telegram_id or user.telegram_id in (None, telegram_id))
+            )
+            if owned:
+                return user
+            log.info(
+                "Remnawave: профиль id=%s не подошёл, ищем по Telegram ID",
+                remnawave_user_id,
+            )
+        if telegram_id:
+            return await self.fetch_user_by_telegram_id(telegram_id)
+        return None
+
 
 async def log_remnawave_connectivity(settings: RemnawaveSettings) -> None:
     if not settings.is_configured:

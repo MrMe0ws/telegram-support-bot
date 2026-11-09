@@ -351,6 +351,33 @@ def test_json_request_works_as_before(tmp_path, isolated) -> None:
     _run(tmp_path, scenario)
 
 
+def test_profile_ids_are_kept_on_ticket(tmp_path, isolated) -> None:
+    """customer_id и remnawave_user_id — для /profile web-only клиента; пустые не затирают."""
+    from app.db.models import Ticket
+
+    async def ticket_ids(sf):
+        async with sf() as session:
+            t = (await session.execute(Ticket.__table__.select())).one()
+        return t.linked_telegram_id, t.linked_customer_id, t.remnawave_user_id
+
+    async def scenario(client, bot, sf):
+        resp = await client.post(
+            "/internal/cabinet/message",
+            json=_payload(text="привет", customer_id=1853, remnawave_user_id=77),
+            headers=AUTH,
+        )
+        assert resp.status == 200
+        assert await ticket_ids(sf) == (None, 1853, 77)
+
+        resp = await client.post(
+            "/internal/cabinet/message", json=_payload(is_new_ticket=False, text="ещё"), headers=AUTH,
+        )
+        assert resp.status == 200
+        assert await ticket_ids(sf) == (None, 1853, 77)
+
+    _run(tmp_path, scenario)
+
+
 def test_retry_with_same_client_message_id(tmp_path, isolated) -> None:
     async def scenario(client, bot, sf):
         cmid = "22222222-2222-2222-2222-222222222222"

@@ -153,3 +153,68 @@ def test_fetch_by_telegram_id_stream_ignores_foreign_users() -> None:
 
     client._request_json = fake_request  # type: ignore[method-assign]
     assert asyncio.run(client.fetch_user_by_telegram_id(8440429610)) is None
+
+
+def _fetch_for_ticket(responses: dict[str, tuple[int, dict]], **ids):
+    import asyncio
+
+    from app.services.remnawave_client import RemnawaveClient
+
+    client = RemnawaveClient(_rw_settings())
+    calls: list[str] = []
+
+    async def fake_request(url: str):
+        calls.append(url)
+        for path, response in responses.items():
+            if path in url:
+                return response
+        return 404, None
+
+    client._request_json = fake_request  # type: ignore[method-assign]
+    return asyncio.run(client.fetch_user_for_ticket(**ids)), calls
+
+
+def test_fetch_for_ticket_web_only_by_profile_id() -> None:
+    """Web-only клиент кабинета: telegramId в панели нет, профиль находится по id."""
+    user, calls = _fetch_for_ticket(
+        {"/api/users/77": (200, {"response": {"id": 77, "username": "1853_ivanov", "status": "ACTIVE"}})},
+        remnawave_user_id=77,
+        telegram_id=None,
+    )
+    assert user is not None and user.username == "1853_ivanov"
+    assert not any("/api/users/stream" in u for u in calls)
+
+
+def test_fetch_for_ticket_falls_back_to_telegram_on_foreign_profile() -> None:
+    """id профиля устарел и указывает на чужой Telegram — ищем по своему Telegram ID."""
+    user, _ = _fetch_for_ticket(
+        {
+            "/api/users/77": (200, {"response": {"id": 77, "username": "1_111", "telegramId": 111, "status": "ACTIVE"}}),
+            "/api/users/stream": (
+                200,
+                {"response": {"users": [{"username": "1853_222", "telegramId": 222, "status": "ACTIVE"}]}},
+            ),
+        },
+        remnawave_user_id=77,
+        telegram_id=222,
+    )
+    assert user is not None and user.username == "1853_222"
+
+
+def test_fetch_for_ticket_without_ids() -> None:
+    user, calls = _fetch_for_ticket({}, remnawave_user_id=None, telegram_id=None)
+    assert user is None and calls == []
+
+
+def test_format_remnawave_profile_without_telegram() -> None:
+    user = RemnawaveUser(
+        username="1853_ivanov", status="ACTIVE", expire_at=None, used_traffic_bytes=None,
+        traffic_limit_bytes=None, traffic_limit_strategy=None, last_traffic_reset_at=None,
+        hwid_device_limit=None, description=None, tag=None, internal_squads=None,
+        last_activity_at=None, subscription_url=None, telegram_id=None,
+    )
+    html = format_remnawave_profile_block(
+        user, telegram_username_line="кабинет", telegram_id=None, settings=_rw_settings(),
+    )
+    assert "🆔 TG ID: —" in html
+    assert "<code>1853_ivanov</code>" in html
